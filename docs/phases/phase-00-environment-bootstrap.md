@@ -55,25 +55,33 @@ Establish the initial Raspberry Pi deployment boundary before implementation beg
 
 ## Implementation Details To Resolve
 
-- choose the exact remote workspace path on the Pi
 - define the workspace subtree that the restricted runtime user may write to
 - decide any initial log, artifact, and memory directory boundaries needed during bootstrap
 - document the relationship between bootstrap access and deployed execution access
+
+## Selected Defaults
+
+- remote workspace path: `/srv/argentum`
+- restricted runtime username: `argentum`
+- planned bootstrap identity path: `/srv/argentum/config/bootstrap/SOUL.md`
+
+These defaults should be used for Phase 0 unless an explicit deployment change is made before remote execution.
 
 ## Minimum Phase 0 Artifacts
 
 - the selected remote workspace path
 - the restricted runtime username
 - the workspace subtree ownership and write-scope policy
+- the planned bootstrap identity path and permission model
 - the bootstrap validation commands and expected outcomes
 - the handoff note that distinguishes deployment-boundary decisions from application-design decisions
 
 ## Implementation Tasks
 
-- choose the remote workspace path on the Pi
-- create the workspace directory and expected subdirectories
-- create the restricted runtime user for the deployed agent
+- create `/srv/argentum` and expected subdirectories on the Pi
+- create the restricted runtime user `argentum`
 - apply filesystem ownership and write permissions so the runtime user can write only within the intended workspace subtree
+- create and permission the controlled bootstrap identity location at `/srv/argentum/config/bootstrap/SOUL.md`
 - verify that `admin` access remains available for setup, validation, and maintenance
 - document the resulting path, ownership model, and validation commands
 
@@ -94,13 +102,14 @@ Establish the initial Raspberry Pi deployment boundary before implementation beg
 
 ## Exit Criteria
 
-- the Pi workspace directory is created and documented
-- the restricted runtime user is created
+- the Pi workspace directory `/srv/argentum` is created and documented
+- the restricted runtime user `argentum` is created
 - the runtime user's write permissions are limited to the intended workspace subtree
 - admin bootstrap access is verified
+- bootstrap identity material has an explicit controlled location and permission model
 - Phase 1 can proceed with a defined deployment boundary
 
 ## Risks And Open Questions
 
-- the exact remote workspace path is still undecided
-- the exact runtime username is still undecided
+- the exact subdirectory ownership model under `/srv/argentum` is still undecided
+- the exact mode and owner/group handling for `/srv/argentum/config/bootstrap/SOUL.md` is still undecided

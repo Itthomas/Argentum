@@ -31,6 +31,12 @@ All infrastructure for this system should be new and distinct. Do not assume reu
 - deployed execution should use a dedicated restricted runtime user created during Phase 0
 - the runtime user should only be able to write within the intended agent-owned workspace subtree
 
+## Selected Phase 0 Defaults
+
+- remote workspace path: `/srv/argentum`
+- restricted runtime username: `argentum`
+- planned bootstrap identity path: `/srv/argentum/config/bootstrap/SOUL.md`
+
 ## Phase 0 Objectives
 
 - choose the remote workspace path on the Pi
@@ -63,6 +69,7 @@ All infrastructure for this system should be new and distinct. Do not assume reu
 - verify the runtime user can write within the intended subtree
 - verify the runtime user cannot write outside that subtree
 
-## Open Bootstrap Item
+## Open Bootstrap Items
 
-The exact remote workspace path is intentionally not finalized yet and should be selected during Phase 0.
+- the selected workspace path and runtime user still need to be created and validated on the Pi
+- the exact subdirectory ownership and mode settings under `/srv/argentum` still need to be applied and verified remotely

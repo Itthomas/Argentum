@@ -10,21 +10,21 @@ Establish the Raspberry Pi deployment boundary before implementation phases begi
 
 ## Immediate Tasks
 
-- Define the remote workspace path on the Pi.
-- Create the restricted runtime user for the deployed agent.
+- Create the remote workspace path `/srv/argentum` on the Pi.
+- Create the restricted runtime user `argentum` for the deployed agent.
 - Limit runtime write permissions to the agent-owned workspace subtree.
-- Define the controlled bootstrap location and ownership model for identity material such as `SOUL.md`.
+- Create the controlled bootstrap location and ownership model for identity material at `/srv/argentum/config/bootstrap/SOUL.md`.
 - Document bootstrap validation steps and handoff criteria into Phase 1.
 
 ## Current Blockers
 
-- The remote workspace path has not been selected yet.
-- The restricted runtime user has not been created yet.
+- The selected workspace path `/srv/argentum` has not been created yet on the Pi.
+- The restricted runtime user `argentum` has not been created yet.
 
 ## Definition Of Done
 
-- The Pi workspace path exists and is documented.
-- The restricted runtime user exists and has limited write scope.
+- The Pi workspace path `/srv/argentum` exists and is documented.
+- The restricted runtime user `argentum` exists and has limited write scope.
 - Admin-based bootstrap access is verified.
-- Bootstrap identity material has an explicit controlled location and permission model.
+- Bootstrap identity material exists at a controlled path with an explicit permission model.
 - Phase 1 can begin without ambiguity about deployment filesystem boundaries.

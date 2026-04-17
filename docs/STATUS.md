@@ -25,7 +25,7 @@ Pytest-based test layout is present but no tests are implemented yet.
 
 ## In Progress
 
-- Defining the Phase 0 Pi bootstrap requirements and handoff into implementation phases.
+- Phase 0 deployment defaults are selected and being turned into remote bootstrap actions.
 - Preparing to execute Phase 0 against the Raspberry Pi deployment target.
 
 ## Upcoming
@@ -39,8 +39,9 @@ Pytest-based test layout is present but no tests are implemented yet.
 - No runtime code exists yet.
 - No database schema or migration framework has been selected yet.
 - No CI, lint, or formatting tooling has been added yet.
-- The deployment workspace path on the Pi has not been created yet.
-- The restricted runtime user for deployment has not been created yet.
+- The deployment workspace path `/srv/argentum` has not been created yet on the Pi.
+- The restricted runtime user `argentum` has not been created yet.
+- The bootstrap identity path `/srv/argentum/config/bootstrap/SOUL.md` has not been created or permissioned yet.
 
 ## Technical Debt
 
@@ -60,6 +61,7 @@ Pytest-based test layout is present but no tests are implemented yet.
 - Canonical remediation pass: complete
 - Derived-doc synchronization: complete
 - Python project metadata: complete
-- Phase 0 bootstrap: not started
+- Phase 0 defaults selected: complete
+- Phase 0 remote bootstrap: not started
 - Automated tests: not started
 - Runtime implementation: not started

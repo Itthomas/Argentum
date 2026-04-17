@@ -12,7 +12,7 @@ Each phase is supported by derived cross-cutting working references under `docs/
 - Depends on: workspace scaffold only.
 - Major deliverables: Pi workspace path creation, restricted agent runtime user, writable agent-owned subtree, and documented bootstrap validation steps.
 - Verification gate: remote access verified through `admin`, runtime user created with limited write scope, and deployment workspace boundaries confirmed.
-- Status: active
+- Status: complete
 
 ## Phase 1: Core Spine
 
@@ -44,4 +44,4 @@ Each phase is supported by derived cross-cutting working references under `docs/
 - Depends on: Phase 3.
 - Major deliverables: tool-authoring pipeline, policy validation, generated-tool lifecycle tracking, staged activation controls, provider fallback visibility, hardening, and operational reporting.
 - Verification gate: tool pipeline verification, lifecycle and rollback tests, provider fallback behavior tests, and recovery/observability checks.
-- Status: planned
+- Status: active

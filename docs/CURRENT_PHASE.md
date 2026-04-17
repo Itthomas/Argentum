@@ -2,29 +2,28 @@
 
 ## Active Phase
 
-Phase 0: Environment bootstrap
+Phase 1: Core spine
 
 ## Goal
 
-Establish the Raspberry Pi deployment boundary before implementation phases begin by creating the remote workspace directory, the restricted runtime user, and the initial ownership and write-permission model.
+Establish ingress trust handling, queue semantics, durable task continuity, core schemas, claims, and state-machine enforcement on top of the completed Phase 0 deployment boundary.
 
 ## Immediate Tasks
 
-- Create the remote workspace path `/srv/argentum` on the Pi.
-- Create the restricted runtime user `argentum` for the deployed agent.
-- Limit runtime write permissions to the agent-owned workspace subtree.
-- Create the controlled bootstrap location and ownership model for identity material at `/srv/argentum/config/bootstrap/SOUL.md`.
-- Document bootstrap validation steps and handoff criteria into Phase 1.
+- Define code-level representations for `EventRecord`, `SessionRecord`, `TaskRecord`, and `TaskClaimRecord`.
+- Choose the initial PostgreSQL persistence and migration approach.
+- Implement legal task and claim transition boundaries instead of freeform mutation.
+- Define the event intake contract for ingress trust handling, queue ownership, retry behavior, and dead-letter handling.
+- Establish Phase 1 verification targets for schema, lifecycle, and claim exclusivity behavior.
 
 ## Current Blockers
 
-- The selected workspace path `/srv/argentum` has not been created yet on the Pi.
-- The restricted runtime user `argentum` has not been created yet.
+- No durable schema code exists yet for the Phase 1 objects.
+- The persistence and migration stack for PostgreSQL has not been selected yet.
 
 ## Definition Of Done
 
-- The Pi workspace path `/srv/argentum` exists and is documented.
-- The restricted runtime user `argentum` exists and has limited write scope.
-- Admin-based bootstrap access is verified.
-- Bootstrap identity material exists at a controlled path with an explicit permission model.
-- Phase 1 can begin without ambiguity about deployment filesystem boundaries.
+- Phase 1 durable records are represented in code.
+- Event, task, and claim transitions are governed rather than ad hoc.
+- Claim acquisition preserves exclusive ownership semantics.
+- Phase 1 verification targets are automated with pytest where practical.

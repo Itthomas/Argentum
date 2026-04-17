@@ -53,11 +53,16 @@ Establish the initial Raspberry Pi deployment boundary before implementation beg
 
 - none
 
-## Implementation Details To Resolve
+## Implemented Deployment Boundary
 
-- define the workspace subtree that the restricted runtime user may write to
-- decide any initial log, artifact, and memory directory boundaries needed during bootstrap
-- document the relationship between bootstrap access and deployed execution access
+- workspace root: `/srv/argentum`, owned by `root:root`, mode `0755`
+- protected configuration path: `/srv/argentum/config`, owned by `root:root`, mode `0755`
+- protected bootstrap identity path: `/srv/argentum/config/bootstrap/SOUL.md`, owned by `root:argentum`, mode `0640`, under a `root:argentum` directory with mode `0750`
+- runtime-writable subtree: `/srv/argentum/var`, owned by `argentum:argentum`, mode `0750`
+- initial runtime subdirectories: `/srv/argentum/var/log`, `/srv/argentum/var/artifacts`, `/srv/argentum/var/memory`, `/srv/argentum/var/tmp`, `/srv/argentum/var/run`
+- runtime account: `argentum`, system user, home directory `/srv/argentum/var`, shell `/usr/sbin/nologin`
+
+This boundary preserves `admin` for bootstrap and maintenance while restricting deployed runtime writes to the `/srv/argentum/var` subtree.
 
 ## Selected Defaults
 
@@ -78,9 +83,9 @@ These defaults should be used for Phase 0 unless an explicit deployment change i
 
 ## Implementation Tasks
 
-- create `/srv/argentum` and expected subdirectories on the Pi
+- create `/srv/argentum` and the selected subdirectories on the Pi
 - create the restricted runtime user `argentum`
-- apply filesystem ownership and write permissions so the runtime user can write only within the intended workspace subtree
+- apply filesystem ownership and write permissions so the runtime user can write only within `/srv/argentum/var`
 - create and permission the controlled bootstrap identity location at `/srv/argentum/config/bootstrap/SOUL.md`
 - verify that `admin` access remains available for setup, validation, and maintenance
 - document the resulting path, ownership model, and validation commands
@@ -100,6 +105,16 @@ These defaults should be used for Phase 0 unless an explicit deployment change i
 - verify the runtime user can write within the intended workspace subtree
 - verify the chosen deployment boundary is documented for later phases
 
+## Verification Outcomes
+
+- SSH access via `admin` was verified
+- `/srv/argentum` exists on the Pi
+- `argentum` exists as the restricted runtime user
+- `argentum` can write within `/srv/argentum/var/tmp`
+- `argentum` cannot write to `/srv/argentum`
+- `argentum` cannot modify `/srv/argentum/config/bootstrap/SOUL.md`
+- the deployment boundary has been written back into the phase and deployment reference docs
+
 ## Exit Criteria
 
 - the Pi workspace directory `/srv/argentum` is created and documented
@@ -111,5 +126,5 @@ These defaults should be used for Phase 0 unless an explicit deployment change i
 
 ## Risks And Open Questions
 
-- the exact subdirectory ownership model under `/srv/argentum` is still undecided
-- the exact mode and owner/group handling for `/srv/argentum/config/bootstrap/SOUL.md` is still undecided
+- the placeholder `SOUL.md` content must be replaced before runtime enablement
+- future deployment changes should preserve the same write-boundary semantics unless deliberately revised

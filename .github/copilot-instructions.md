@@ -36,8 +36,9 @@ For implementation work, read the active phase doc first, then the explicitly li
 - The intended deployment target is a Raspberry Pi 5 reachable over SSH.
 - For remote validation, bootstrap, and test runs on the Pi, use the `admin` account with key-based auth unless the greenfield deployment docs explicitly change that.
 - Preferred SSH command: `ssh -i ~/.ssh/id_agentic admin@xx-vitae-xx`
-- Phase 0 bootstrap should create the remote deployment workspace at `/srv/argentum` unless the deployment docs are explicitly revised.
-- Phase 0 bootstrap must create the restricted runtime user `argentum`, create the controlled bootstrap identity path `/srv/argentum/config/bootstrap/SOUL.md`, and establish a workspace subtree writable by that user while development and bootstrap work continue through the `admin` account.
+- Phase 0 bootstrap created the remote deployment workspace at `/srv/argentum`.
+- Phase 0 bootstrap created the restricted runtime user `argentum`, the controlled bootstrap identity path `/srv/argentum/config/bootstrap/SOUL.md`, and the runtime-writable subtree under `/srv/argentum/var`.
+- Preserve that deployment boundary unless the deployment docs are explicitly revised.
 - Final test validation should be performed on the Pi once the greenfield deployment path and service layout exist. Local runs are advisory only.
 
 ## Phased Workflow

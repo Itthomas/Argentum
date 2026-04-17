@@ -37,6 +37,16 @@ All infrastructure for this system should be new and distinct. Do not assume reu
 - restricted runtime username: `argentum`
 - planned bootstrap identity path: `/srv/argentum/config/bootstrap/SOUL.md`
 
+## Implemented Phase 0 Result
+
+- `/srv/argentum` exists as the root deployment workspace and remains owned by `root:root` with mode `0755`
+- `/srv/argentum/config` is owned by `root:root` with mode `0755`
+- `/srv/argentum/config/bootstrap` is owned by `root:argentum` with mode `0750`
+- `/srv/argentum/config/bootstrap/SOUL.md` exists as a controlled bootstrap placeholder owned by `root:argentum` with mode `0640`
+- `/srv/argentum/var` is the intended runtime-writable subtree owned by `argentum:argentum` with mode `0750`
+- `/srv/argentum/var/log`, `/srv/argentum/var/artifacts`, `/srv/argentum/var/memory`, `/srv/argentum/var/tmp`, and `/srv/argentum/var/run` are owned by `argentum:argentum` with mode `0750`
+- the `argentum` runtime user exists as a restricted system account with home directory `/srv/argentum/var` and shell `/usr/sbin/nologin`
+
 ## Phase 0 Objectives
 
 - choose the remote workspace path on the Pi
@@ -69,7 +79,14 @@ All infrastructure for this system should be new and distinct. Do not assume reu
 - verify the runtime user can write within the intended subtree
 - verify the runtime user cannot write outside that subtree
 
+## Validation Outcomes
+
+- SSH access through `admin` was verified with the documented key-based path
+- the runtime user `argentum` was verified to write successfully within `/srv/argentum/var/tmp`
+- the runtime user `argentum` was verified to fail when attempting to write to `/srv/argentum`
+- the runtime user `argentum` was verified to fail when attempting to modify `/srv/argentum/config/bootstrap/SOUL.md`
+
 ## Open Bootstrap Items
 
-- the selected workspace path and runtime user still need to be created and validated on the Pi
-- the exact subdirectory ownership and mode settings under `/srv/argentum` still need to be applied and verified remotely
+- replace the placeholder `SOUL.md` content with curated bootstrap identity content before enabling the application runtime
+- preserve the current ownership and permission boundary unless a documented deployment change explicitly replaces it

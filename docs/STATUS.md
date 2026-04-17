@@ -2,7 +2,7 @@
 
 ## Current Phase
 
-Phase 0: Environment bootstrap
+Phase 1: Core spine
 
 ## Repo State
 
@@ -22,16 +22,16 @@ Pytest-based test layout is present but no tests are implemented yet.
 - Remediated the canonical architecture spec to clarify bootstrap integrity, external trust boundaries, queue semantics, artifact retention, staged tool activation, and least-privilege secret access.
 - Remediated the technical appendix to add enforceable queue/auth fields, approval-resolution constraints, artifact retention fields, and generated-tool lifecycle records.
 - Rebalanced the affected phase and reference docs to align with the remediated canonical contracts.
+- Completed Phase 0 on the Raspberry Pi by creating `/srv/argentum`, the restricted runtime user `argentum`, the protected bootstrap identity path, and the bounded runtime-writable subtree under `/srv/argentum/var`.
+- Verified `admin` SSH access, runtime write access within `/srv/argentum/var`, and runtime write failure outside the permitted subtree and against `SOUL.md`.
 
 ## In Progress
 
-- Phase 0 deployment defaults are selected and being turned into remote bootstrap actions.
-- Preparing to execute Phase 0 against the Raspberry Pi deployment target.
+- Preparing Phase 1 implementation for durable ingress, task, claim, and lifecycle foundations.
 
 ## Upcoming
 
-- Establish the Pi workspace directory and the restricted runtime user during Phase 0.
-- Begin Phase 1 implementation planning for ingress, task durability, claims, and state-machine enforcement after Phase 0 is verified.
+- Begin Phase 1 implementation for ingress, task durability, claims, and state-machine enforcement.
 - Decide initial persistence and migration stack inside the Python codebase.
 
 ## Known Issues
@@ -39,9 +39,7 @@ Pytest-based test layout is present but no tests are implemented yet.
 - No runtime code exists yet.
 - No database schema or migration framework has been selected yet.
 - No CI, lint, or formatting tooling has been added yet.
-- The deployment workspace path `/srv/argentum` has not been created yet on the Pi.
-- The restricted runtime user `argentum` has not been created yet.
-- The bootstrap identity path `/srv/argentum/config/bootstrap/SOUL.md` has not been created or permissioned yet.
+- The placeholder bootstrap identity content in `/srv/argentum/config/bootstrap/SOUL.md` still needs to be replaced before runtime enablement.
 
 ## Technical Debt
 
@@ -50,7 +48,7 @@ Pytest-based test layout is present but no tests are implemented yet.
 
 ## Risks And Blockers
 
-- Early environment drift is a risk until the Pi bootstrap conventions are established.
+- Early implementation drift is a risk until Phase 1 durable schemas and transitions are enforced in code.
 - The canonical documentation is now tighter, but implementation drift remains a risk until Phase 1 durable schemas and state transitions are enforced in code.
 - Tooling choices made before Phase 1 schema work could cause avoidable churn.
 
@@ -62,6 +60,6 @@ Pytest-based test layout is present but no tests are implemented yet.
 - Derived-doc synchronization: complete
 - Python project metadata: complete
 - Phase 0 defaults selected: complete
-- Phase 0 remote bootstrap: not started
+- Phase 0 remote bootstrap: complete
 - Automated tests: not started
 - Runtime implementation: not started

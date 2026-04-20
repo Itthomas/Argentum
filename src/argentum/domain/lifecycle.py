@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from .enums import ClaimReleaseReason, ClaimState, TaskStatus
-from .models import TaskClaimRecord, TaskRecord
+from .enums import ApprovalDecision, ApprovalStatus, ClaimReleaseReason, ClaimState, TaskStatus
+from .models import ApprovalRecord, TaskClaimRecord, TaskRecord
 
 TASK_TRANSITIONS: dict[TaskStatus, frozenset[TaskStatus]] = {
     TaskStatus.PROPOSED: frozenset({TaskStatus.ACTIVE, TaskStatus.SCHEDULED, TaskStatus.ABANDONED}),
@@ -44,6 +44,31 @@ CLAIM_TRANSITIONS: dict[ClaimState, frozenset[ClaimState]] = {
     ClaimState.INVALIDATED: frozenset(),
 }
 
+APPROVAL_TRANSITIONS: dict[ApprovalStatus, frozenset[ApprovalStatus]] = {
+    ApprovalStatus.PENDING: frozenset(
+        {
+            ApprovalStatus.REMINDED,
+            ApprovalStatus.APPROVED,
+            ApprovalStatus.DENIED,
+            ApprovalStatus.EXPIRED,
+            ApprovalStatus.CANCELLED,
+        }
+    ),
+    ApprovalStatus.REMINDED: frozenset(
+        {
+            ApprovalStatus.REMINDED,
+            ApprovalStatus.APPROVED,
+            ApprovalStatus.DENIED,
+            ApprovalStatus.EXPIRED,
+            ApprovalStatus.CANCELLED,
+        }
+    ),
+    ApprovalStatus.APPROVED: frozenset(),
+    ApprovalStatus.DENIED: frozenset(),
+    ApprovalStatus.EXPIRED: frozenset(),
+    ApprovalStatus.CANCELLED: frozenset(),
+}
+
 TERMINAL_TASK_STATUSES = frozenset(
     {TaskStatus.COMPLETED, TaskStatus.FAILED, TaskStatus.FAILED_TIMEOUT, TaskStatus.EXPIRED, TaskStatus.ABANDONED}
 )
@@ -58,6 +83,10 @@ class TaskLifecycleError(ValueError):
 
 class ClaimLifecycleError(ValueError):
     """Raised when a claim transition violates the canonical state machine."""
+
+
+class ApprovalLifecycleError(ValueError):
+    """Raised when an approval transition violates the canonical state machine."""
 
 
 def _now_or(value: datetime | None) -> datetime:
@@ -131,6 +160,51 @@ def transition_claim_state(
         updates["superseded_by_claim_id"] = superseded_by_claim_id
 
     return claim.model_copy(update=updates)
+
+
+def transition_approval_status(
+    approval: ApprovalRecord,
+    new_status: ApprovalStatus,
+    *,
+    transition_time: datetime | None = None,
+    next_reminder_at: datetime | None = None,
+    decision: ApprovalDecision | None = None,
+    resolved_by_user_id: str | None = None,
+    resolved_by_session_id: str | None = None,
+    resolution_payload_hash: str | None = None,
+    operator_comment: str | None = None,
+) -> ApprovalRecord:
+    if new_status not in APPROVAL_TRANSITIONS[approval.status]:
+        raise ApprovalLifecycleError(f"illegal approval transition: {approval.status} -> {new_status}")
+
+    when = _now_or(transition_time)
+    updates: dict[str, object | None] = {
+        "status": new_status,
+        "updated_at": when,
+    }
+
+    if new_status == ApprovalStatus.REMINDED:
+        updates["reminder_count"] = approval.reminder_count + 1
+        updates["next_reminder_at"] = next_reminder_at
+
+    if new_status in {ApprovalStatus.APPROVED, ApprovalStatus.DENIED, ApprovalStatus.CANCELLED}:
+        if decision is None:
+            raise ApprovalLifecycleError("resolved approvals require an explicit decision")
+        if resolved_by_user_id is None:
+            raise ApprovalLifecycleError("resolved approvals require an operator identity")
+        if resolution_payload_hash is None:
+            raise ApprovalLifecycleError("resolved approvals require a durable payload hash")
+        updates["decision"] = decision
+        updates["resolved_at"] = when
+        updates["resolved_by_user_id"] = resolved_by_user_id
+        updates["resolved_by_session_id"] = resolved_by_session_id
+        updates["resolution_payload_hash"] = resolution_payload_hash
+        updates["operator_comment"] = operator_comment
+
+    if new_status == ApprovalStatus.EXPIRED:
+        updates["resolved_at"] = when
+
+    return approval.model_copy(update=updates)
 
 
 def ensure_exclusive_active_claims(

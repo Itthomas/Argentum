@@ -2,14 +2,14 @@
 
 ## Current Phase
 
-Phase 2: Runtime And Approvals
+Phase 3: Memory, Scheduling, And Subagents
 
 ## Repo State
 
 Workspace scaffolded for phased implementation.
 Canonical architecture and appendix documents live under `docs/`.
 Python package namespace established as `argentum`.
-Phase 1 durable foundations are implemented in Python with Pydantic, SQLAlchemy, Alembic, psycopg, and pytest coverage.
+Phase 2 runtime and approval foundations are implemented in Python with Pydantic, SQLAlchemy, Alembic, LangGraph, and pytest coverage.
 
 ## Completed
 
@@ -31,34 +31,39 @@ Phase 1 durable foundations are implemented in Python with Pydantic, SQLAlchemy,
 - Completed the missing Phase 1 repository behaviors for idempotent event handling and coordinated terminal-state claim release.
 - Automated Phase 1 verification for schema invariants, ingress rejection and retry behavior, lifecycle enforcement, claim exclusivity, idempotent event handling, and terminal-state claim release expectations with pytest.
 - Smoke-tested the initial Alembic migration against SQLite to confirm the schema creates `events`, `sessions`, `tasks`, and `task_claims` plus `alembic_version`.
+- Added Phase 2 enums and durable Pydantic records for approvals, routing policy, provider health, bounded context packets, and runtime working state.
+- Added approval lifecycle handling, approval and routing repositories, and the Phase 2 Alembic migration for `approvals`, `model_routing_policies`, and `provider_health`.
+- Implemented bounded context assembly with explicit budget trimming order and bootstrap-identity integrity handling.
+- Implemented operation-aware routing policy defaults, provider-health-aware route selection, and an orchestration boundary for model access.
+- Implemented a lean LangGraph runtime path that refuses execution without an authoritative claim, pauses durably for approval, resumes after approval resolution, and persists terminal task transitions through the Phase 1 durable spine.
+- Verified Phase 2 with focused and full pytest coverage plus a SQLite Alembic smoke upgrade through `20260420_0002`.
 
 ## In Progress
 
-- Preparing Phase 2 implementation for context assembly, routing policy, runtime orchestration, and approvals.
+- Preparing Phase 3 implementation for memory retrieval, scheduling, stale-state recovery, and bounded subagents.
 
 ## Upcoming
 
-- Define the bounded context-packet and budget model.
-- Implement routing-policy objects and operation-tier defaults.
-- Add approval durability, lifecycle handling, and resumable decision application.
-- Establish the first lean runtime flow that refuses execution without an authoritative claim.
+- Define typed memory persistence and retrieval contracts.
+- Add heartbeat, cron, and follow-up scheduling entry points.
+- Design recovery behavior for stale approvals, stale claims, and lost child tasks.
+- Implement bounded subagent parent-child tracking and result handling.
 
 ## Known Issues
 
-- No Phase 2 runtime loop, approval records, or model-routing layer exists yet.
 - No CI, lint, or formatting tooling has been added yet.
 - The placeholder bootstrap identity content in `/srv/argentum/config/bootstrap/SOUL.md` still needs to be replaced before runtime enablement.
 
 ## Technical Debt
 
 - Packaging is still intentionally lean and will need expansion as the runtime and approval stack grow.
-- The current repositories and migration baseline establish the durable spine, but they do not yet provide full async runtime integration.
+- The current runtime path is intentionally narrow and does not yet include Phase 3 memory retrieval, scheduling, or delegated-worker lifecycle behavior.
 
 ## Risks And Blockers
 
-- Runtime state could drift into becoming a second durable store unless Phase 2 keeps LangGraph state narrow and ephemeral.
-- Approval pause and resume logic must stay idempotent to avoid duplicate governed actions.
-- Bootstrap identity handling still needs a concrete runtime integrity path before execution features are enabled.
+- Phase 3 scheduling and stale-state recovery could become entangled with runtime logic if the boundaries are not preserved.
+- Subagent contracts must remain narrow so delegated workers do not duplicate the whole system runtime.
+- The placeholder bootstrap identity content still blocks real runtime enablement even though the integrity path now exists.
 
 ## Verification Status
 
@@ -73,5 +78,7 @@ Phase 1 durable foundations are implemented in Python with Pydantic, SQLAlchemy,
 - Phase 1 domain models and lifecycle rules: complete
 - Phase 1 ingress and persistence foundations: complete
 - Phase 1 gate coverage: complete
+- Phase 2 runtime and approvals: complete
+- Phase 2 migration smoke test: complete
 - Automated tests: passing
-- Runtime implementation: not started
+- Phase 3 implementation: not started

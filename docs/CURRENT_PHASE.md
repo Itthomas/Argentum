@@ -2,27 +2,27 @@
 
 ## Active Phase
 
-Phase 2: Runtime And Approvals
+Phase 3: Memory, Scheduling, And Subagents
 
 ## Goal
 
-Build the bounded reasoning loop around the durable task layer: context assembly, operation-aware model routing, lean LangGraph execution, controlled commits, and approval pause/resume.
+Extend the core system with durable memory retrieval, scheduled and heartbeat-driven continuation, stale-state recovery, and bounded delegated work.
 
 ## Immediate Tasks
 
-- Define `ContextPacket` and `ContextBudget` assembly behavior.
-- Establish operation-to-tier routing policy objects and defaults.
-- Implement lean runtime working-state boundaries around LangGraph.
-- Define approval request, reminder, and resumption flow boundaries.
-- Specify run commit surfaces for task summary, artifacts, and approvals.
+- Define typed memory persistence and retrieval contracts.
+- Establish heartbeat-triggered and follow-up-triggered run entry points using fresh runtime state.
+- Design recovery logic for stale approvals, stale claims, and lost child tasks.
+- Implement bounded subagent contracts and parent-child result handling.
+- Define artifact provenance requirements in code-facing terms.
 
 ## Current Blockers
 
-- No Phase 2 approval or routing schemas exist yet.
-- No runtime orchestration layer exists above the Phase 1 durable spine.
+- No Phase 3 memory, artifact, or subagent schemas exist yet.
+- No heartbeat or recovery orchestration layer exists above the Phase 2 runtime.
 
 ## Definition Of Done
 
-- Runtime turns depend on explicit context packets and routing policy.
-- Governed actions can pause for approval and resume safely.
-- Phase 2 behavior is covered by deterministic tests where practical.
+- Memory, scheduling, and delegated work operate through durable policy-driven flows.
+- No waiting task or child task can remain indefinitely without a defined policy outcome.
+- Phase 3 behavior is covered by deterministic tests where practical.

@@ -6,12 +6,26 @@ from datetime import UTC, datetime, timedelta
 from sqlalchemy import Select, select
 from sqlalchemy.orm import Session
 
-from argentum.domain.enums import ClaimReleaseReason, ClaimState, EventProcessingStatus, TaskStatus
+from argentum.domain.enums import ApprovalDecision, ApprovalStatus, ClaimReleaseReason, ClaimState, EventProcessingStatus, TaskStatus
 from argentum.domain.ingress import EventIntakePolicy, apply_intake_decision, evaluate_event_intake
-from argentum.domain.lifecycle import ClaimLifecycleError, transition_claim_state, transition_task_status
-from argentum.domain.models import EventRecord, TaskClaimRecord, TaskRecord
+from argentum.domain.lifecycle import (
+    ApprovalLifecycleError,
+    ClaimLifecycleError,
+    transition_approval_status,
+    transition_claim_state,
+    transition_task_status,
+)
+from argentum.domain.models import (
+    ApprovalDecisionPayload,
+    ApprovalRecord,
+    EventRecord,
+    ModelRoutingPolicy,
+    ProviderHealthRecord,
+    TaskClaimRecord,
+    TaskRecord,
+)
 
-from .tables import EventTable, TaskClaimTable, TaskTable
+from .tables import ApprovalTable, EventTable, ModelRoutingPolicyTable, ProviderHealthTable, TaskClaimTable, TaskTable
 
 
 @dataclass(slots=True, frozen=True)
@@ -44,6 +58,14 @@ class EventPersistenceResult:
     event: EventRecord
     created: bool
     deduplicated: bool
+
+
+@dataclass(slots=True, frozen=True)
+class ApprovalTaskTransitionRequest:
+    task_id: str
+    claim_id: str
+    approval_id: str
+    transitioned_at: datetime
 
 
 def _task_table_to_record(task: TaskTable) -> TaskRecord:
@@ -185,6 +207,114 @@ def _event_record_to_table(event: EventRecord) -> EventTable:
     )
 
 
+def _approval_table_to_record(approval: ApprovalTable) -> ApprovalRecord:
+    return ApprovalRecord.model_validate(
+        {
+            "approval_id": approval.approval_id,
+            "task_id": approval.task_id,
+            "run_id": approval.run_id,
+            "approval_type": approval.approval_type,
+            "risk_level": approval.risk_level,
+            "requested_action": approval.requested_action,
+            "rationale": approval.rationale,
+            "constrained_options": approval.constrained_options,
+            "request_payload": approval.request_payload,
+            "eligible_resolver_refs": approval.eligible_resolver_refs,
+            "status": approval.status,
+            "requested_via_session_id": approval.requested_via_session_id,
+            "requested_via_message_ref": approval.requested_via_message_ref,
+            "reminder_count": approval.reminder_count,
+            "next_reminder_at": approval.next_reminder_at,
+            "expires_at": approval.expires_at,
+            "resolved_at": approval.resolved_at,
+            "resolved_by_user_id": approval.resolved_by_user_id,
+            "resolved_by_session_id": approval.resolved_by_session_id,
+            "resolution_payload_hash": approval.resolution_payload_hash,
+            "decision": approval.decision,
+            "operator_comment": approval.operator_comment,
+            "created_at": approval.created_at,
+            "updated_at": approval.updated_at,
+        }
+    )
+
+
+def _approval_record_to_table(approval: ApprovalRecord) -> ApprovalTable:
+    return ApprovalTable(
+        approval_id=approval.approval_id,
+        task_id=approval.task_id,
+        run_id=approval.run_id,
+        approval_type=approval.approval_type,
+        risk_level=approval.risk_level,
+        requested_action=approval.requested_action,
+        rationale=approval.rationale,
+        constrained_options=approval.constrained_options,
+        request_payload=approval.request_payload,
+        eligible_resolver_refs=approval.eligible_resolver_refs,
+        status=approval.status,
+        requested_via_session_id=approval.requested_via_session_id,
+        requested_via_message_ref=approval.requested_via_message_ref,
+        reminder_count=approval.reminder_count,
+        next_reminder_at=approval.next_reminder_at,
+        expires_at=approval.expires_at,
+        resolved_at=approval.resolved_at,
+        resolved_by_user_id=approval.resolved_by_user_id,
+        resolved_by_session_id=approval.resolved_by_session_id,
+        resolution_payload_hash=approval.resolution_payload_hash,
+        decision=approval.decision,
+        operator_comment=approval.operator_comment,
+        created_at=approval.created_at,
+        updated_at=approval.updated_at,
+    )
+
+
+def _policy_table_to_record(policy: ModelRoutingPolicyTable) -> ModelRoutingPolicy:
+    return ModelRoutingPolicy.model_validate(
+        {
+            "policy_id": policy.policy_id,
+            "version": policy.version,
+            "active": policy.active,
+            "provider_mappings": policy.provider_mappings,
+            "operation_mappings": policy.operation_mappings,
+            "timeout_profiles": policy.timeout_profiles,
+            "fallback_profiles": policy.fallback_profiles,
+            "budget_profiles": policy.budget_profiles,
+            "created_at": policy.created_at,
+            "updated_at": policy.updated_at,
+        }
+    )
+
+
+def _policy_record_to_table(policy: ModelRoutingPolicy) -> ModelRoutingPolicyTable:
+    return ModelRoutingPolicyTable(
+        policy_id=policy.policy_id,
+        version=policy.version,
+        active=policy.active,
+        provider_mappings=[mapping.model_dump(mode="json") for mapping in policy.provider_mappings],
+        operation_mappings=[mapping.model_dump(mode="json") for mapping in policy.operation_mappings],
+        timeout_profiles=[profile.model_dump(mode="json") for profile in policy.timeout_profiles],
+        fallback_profiles=[profile.model_dump(mode="json") for profile in policy.fallback_profiles],
+        budget_profiles=[profile.model_dump(mode="json") for profile in policy.budget_profiles],
+        created_at=policy.created_at,
+        updated_at=policy.updated_at,
+    )
+
+
+def _provider_health_table_to_record(provider_health: ProviderHealthTable) -> ProviderHealthRecord:
+    return ProviderHealthRecord.model_validate(
+        {
+            "provider_id": provider_health.provider_id,
+            "health_status": provider_health.health_status,
+            "last_success_at": provider_health.last_success_at,
+            "last_timeout_at": provider_health.last_timeout_at,
+            "last_rate_limit_at": provider_health.last_rate_limit_at,
+            "consecutive_failures": provider_health.consecutive_failures,
+            "degraded_until": provider_health.degraded_until,
+            "notes": provider_health.notes,
+            "updated_at": provider_health.updated_at,
+        }
+    )
+
+
 def active_claims_for_task_statement(task_id: str, *, as_of: datetime) -> Select[tuple[TaskClaimTable]]:
     return (
         select(TaskClaimTable)
@@ -215,11 +345,12 @@ class ClaimRepository:
             TaskStatus.ACTIVE,
             active_run_id=request.run_id,
             transition_time=request.claimed_at,
-            pending_approval_id=task.pending_approval_id,
+            pending_approval_id=None,
         )
 
         task.status = transitioned_task.status
         task.active_run_id = transitioned_task.active_run_id
+        task.pending_approval_id = transitioned_task.pending_approval_id
         task.updated_at = transitioned_task.updated_at
 
         claim = TaskClaimTable(
@@ -237,6 +368,59 @@ class ClaimRepository:
         self._session.add(claim)
         self._session.flush()
         return claim
+
+    def verify_authoritative_claim(self, task_id: str, claim_id: str, *, as_of: datetime) -> TaskClaimRecord:
+        claim = self._session.get(TaskClaimTable, claim_id)
+        if claim is None or claim.task_id != task_id:
+            raise ClaimLifecycleError(f"claim {claim_id} is not linked to task {task_id}")
+        claim_record = _claim_table_to_record(claim)
+        if claim_record.claim_state != ClaimState.ACTIVE:
+            raise ClaimLifecycleError(f"claim {claim_id} is not active")
+        lease_expires_at = claim_record.lease_expires_at
+        if lease_expires_at.tzinfo is None:
+            lease_expires_at = lease_expires_at.replace(tzinfo=UTC)
+        if lease_expires_at <= as_of:
+            raise ClaimLifecycleError(f"claim {claim_id} is expired")
+        return claim_record
+
+    def transition_task_to_waiting_human(self, request: ApprovalTaskTransitionRequest) -> TerminalTaskTransitionResult:
+        task = self._session.execute(
+            select(TaskTable).where(TaskTable.task_id == request.task_id).with_for_update()
+        ).scalar_one()
+        claim = self._session.execute(
+            select(TaskClaimTable).where(TaskClaimTable.claim_id == request.claim_id).with_for_update()
+        ).scalar_one()
+
+        if claim.task_id != request.task_id:
+            raise ClaimLifecycleError(
+                f"claim {request.claim_id} does not belong to task {request.task_id}"
+            )
+
+        task_record = _task_table_to_record(task)
+        transitioned_task = transition_task_status(
+            task_record,
+            TaskStatus.WAITING_HUMAN,
+            transition_time=request.transitioned_at,
+            pending_approval_id=request.approval_id,
+        )
+        claim_record = _claim_table_to_record(claim)
+        transitioned_claim = transition_claim_state(
+            claim_record,
+            ClaimState.EXPIRED,
+            transition_time=request.transitioned_at,
+        )
+
+        task.status = transitioned_task.status
+        task.active_run_id = transitioned_task.active_run_id
+        task.pending_approval_id = transitioned_task.pending_approval_id
+        task.updated_at = transitioned_task.updated_at
+
+        claim.claim_state = transitioned_claim.claim_state
+        claim.updated_at = transitioned_claim.updated_at
+        claim.lease_expires_at = request.transitioned_at
+
+        self._session.flush()
+        return TerminalTaskTransitionResult(task=transitioned_task, claim=transitioned_claim)
 
     def transition_task_to_terminal(self, request: TerminalTaskTransitionRequest) -> TerminalTaskTransitionResult:
         task = self._session.execute(
@@ -268,6 +452,7 @@ class ClaimRepository:
 
         task.status = transitioned_task.status
         task.active_run_id = transitioned_task.active_run_id
+        task.pending_approval_id = transitioned_task.pending_approval_id
         task.completed_at = transitioned_task.completed_at
         task.failed_at = transitioned_task.failed_at
         task.abandoned_at = transitioned_task.abandoned_at
@@ -334,3 +519,154 @@ class EventRepository:
         event.consumed_by_run_id = consumed_by_run_id
         event.queue_owner = None
         event.updated_at = when
+
+
+class ApprovalRepository:
+    def __init__(self, session: Session) -> None:
+        self._session = session
+
+    def create_approval(self, approval: ApprovalRecord) -> ApprovalRecord:
+        persisted = _approval_record_to_table(approval)
+        self._session.add(persisted)
+        self._session.flush()
+        return _approval_table_to_record(persisted)
+
+    def get_approval(self, approval_id: str) -> ApprovalRecord | None:
+        approval = self._session.get(ApprovalTable, approval_id)
+        if approval is None:
+            return None
+        return _approval_table_to_record(approval)
+
+    def record_reminder(self, approval_id: str, *, next_reminder_at: datetime | None, now: datetime) -> ApprovalRecord:
+        approval = self._session.execute(
+            select(ApprovalTable).where(ApprovalTable.approval_id == approval_id).with_for_update()
+        ).scalar_one()
+        approval_record = _approval_table_to_record(approval)
+        reminded = transition_approval_status(
+            approval_record,
+            ApprovalStatus.REMINDED,
+            transition_time=now,
+            next_reminder_at=next_reminder_at,
+        )
+
+        approval.status = reminded.status
+        approval.reminder_count = reminded.reminder_count
+        approval.next_reminder_at = reminded.next_reminder_at
+        approval.updated_at = reminded.updated_at
+        self._session.flush()
+        return reminded
+
+    def resolve_approval(self, payload: ApprovalDecisionPayload) -> ApprovalRecord:
+        approval = self._session.execute(
+            select(ApprovalTable).where(ApprovalTable.approval_id == payload.approval_id).with_for_update()
+        ).scalar_one()
+        approval_record = _approval_table_to_record(approval)
+
+        if approval_record.status in {
+            ApprovalStatus.APPROVED,
+            ApprovalStatus.DENIED,
+            ApprovalStatus.CANCELLED,
+            ApprovalStatus.EXPIRED,
+        }:
+            if approval_record.decision == payload.decision and approval_record.resolution_payload_hash == payload.resolution_payload_hash:
+                return approval_record
+            raise ApprovalLifecycleError(f"approval {payload.approval_id} already resolved")
+
+        status_by_decision = {
+            ApprovalDecision.APPROVE: ApprovalStatus.APPROVED,
+            ApprovalDecision.DENY: ApprovalStatus.DENIED,
+            ApprovalDecision.CANCEL: ApprovalStatus.CANCELLED,
+        }
+        resolved = transition_approval_status(
+            approval_record,
+            status_by_decision[payload.decision],
+            transition_time=payload.occurred_at,
+            decision=payload.decision,
+            resolved_by_user_id=payload.resolved_by_user_id,
+            resolved_by_session_id=payload.resolved_by_session_id,
+            resolution_payload_hash=payload.resolution_payload_hash,
+            operator_comment=payload.operator_comment,
+        )
+
+        approval.status = resolved.status
+        approval.resolved_at = resolved.resolved_at
+        approval.resolved_by_user_id = resolved.resolved_by_user_id
+        approval.resolved_by_session_id = resolved.resolved_by_session_id
+        approval.resolution_payload_hash = resolved.resolution_payload_hash
+        approval.decision = resolved.decision
+        approval.operator_comment = resolved.operator_comment
+        approval.updated_at = resolved.updated_at
+        self._session.flush()
+        return resolved
+
+
+class ModelRoutingPolicyRepository:
+    def __init__(self, session: Session) -> None:
+        self._session = session
+
+    def upsert_policy(self, policy: ModelRoutingPolicy) -> ModelRoutingPolicy:
+        existing = self._session.get(ModelRoutingPolicyTable, policy.policy_id)
+        if existing is None:
+            persisted = _policy_record_to_table(policy)
+            self._session.add(persisted)
+            self._session.flush()
+            return _policy_table_to_record(persisted)
+
+        existing.version = policy.version
+        existing.active = policy.active
+        existing.provider_mappings = [mapping.model_dump(mode="json") for mapping in policy.provider_mappings]
+        existing.operation_mappings = [mapping.model_dump(mode="json") for mapping in policy.operation_mappings]
+        existing.timeout_profiles = [profile.model_dump(mode="json") for profile in policy.timeout_profiles]
+        existing.fallback_profiles = [profile.model_dump(mode="json") for profile in policy.fallback_profiles]
+        existing.budget_profiles = [profile.model_dump(mode="json") for profile in policy.budget_profiles]
+        existing.updated_at = policy.updated_at
+        self._session.flush()
+        return _policy_table_to_record(existing)
+
+    def get_active_policy(self) -> ModelRoutingPolicy | None:
+        policy = self._session.execute(
+            select(ModelRoutingPolicyTable).where(ModelRoutingPolicyTable.active.is_(True))
+        ).scalar_one_or_none()
+        if policy is None:
+            return None
+        return _policy_table_to_record(policy)
+
+
+class ProviderHealthRepository:
+    def __init__(self, session: Session) -> None:
+        self._session = session
+
+    def upsert_provider_health(self, provider_health: ProviderHealthRecord) -> ProviderHealthRecord:
+        existing = self._session.get(ProviderHealthTable, provider_health.provider_id)
+        if existing is None:
+            existing = ProviderHealthTable(
+                provider_id=provider_health.provider_id,
+                health_status=provider_health.health_status,
+                last_success_at=provider_health.last_success_at,
+                last_timeout_at=provider_health.last_timeout_at,
+                last_rate_limit_at=provider_health.last_rate_limit_at,
+                consecutive_failures=provider_health.consecutive_failures,
+                degraded_until=provider_health.degraded_until,
+                notes=provider_health.notes,
+                updated_at=provider_health.updated_at,
+            )
+            self._session.add(existing)
+            self._session.flush()
+            return _provider_health_table_to_record(existing)
+
+        existing.health_status = provider_health.health_status
+        existing.last_success_at = provider_health.last_success_at
+        existing.last_timeout_at = provider_health.last_timeout_at
+        existing.last_rate_limit_at = provider_health.last_rate_limit_at
+        existing.consecutive_failures = provider_health.consecutive_failures
+        existing.degraded_until = provider_health.degraded_until
+        existing.notes = provider_health.notes
+        existing.updated_at = provider_health.updated_at
+        self._session.flush()
+        return _provider_health_table_to_record(existing)
+
+    def get_provider_health(self, provider_id: str) -> ProviderHealthRecord | None:
+        provider_health = self._session.get(ProviderHealthTable, provider_id)
+        if provider_health is None:
+            return None
+        return _provider_health_table_to_record(provider_health)

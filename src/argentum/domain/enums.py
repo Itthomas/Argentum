@@ -102,3 +102,107 @@ class ClaimReleaseReason(StrEnum):
     RUNTIME_SHUTDOWN = "runtime_shutdown"
     RECOVERY_RECLAIMED = "recovery_reclaimed"
     OPERATOR_CANCELLED = "operator_cancelled"
+
+
+class ApprovalType(StrEnum):
+    TOOL_ACTIVATION = "tool_activation"
+    DESTRUCTIVE_ACTION = "destructive_action"
+    PRIVILEGED_EXECUTION = "privileged_execution"
+    EXTERNAL_SIDE_EFFECT = "external_side_effect"
+    POLICY_EXCEPTION = "policy_exception"
+
+
+class RiskLevel(StrEnum):
+    LOW = "low"
+    MEDIUM = "medium"
+    HIGH = "high"
+    CRITICAL = "critical"
+
+
+class ApprovalStatus(StrEnum):
+    PENDING = "pending"
+    REMINDED = "reminded"
+    APPROVED = "approved"
+    DENIED = "denied"
+    EXPIRED = "expired"
+    CANCELLED = "cancelled"
+
+
+class ApprovalDecision(StrEnum):
+    APPROVE = "approve"
+    DENY = "deny"
+    CANCEL = "cancel"
+
+
+class RunStatus(StrEnum):
+    INITIALIZING = "initializing"
+    EXECUTING = "executing"
+    WAITING_APPROVAL = "waiting_approval"
+    DELEGATING = "delegating"
+    COMMITTING = "committing"
+    COMPLETED = "completed"
+    FAILED = "failed"
+
+
+class ContinuationDecision(StrEnum):
+    CONTINUE_NOW = "continue_now"
+    PAUSE_WAITING_HUMAN = "pause_waiting_human"
+    SCHEDULE_FOLLOWUP = "schedule_followup"
+    COMPLETE = "complete"
+    FAIL = "fail"
+    DELEGATE = "delegate"
+
+
+class RunClass(StrEnum):
+    INGRESS_TRIAGE = "ingress_triage"
+    STANDARD_RUNTIME = "standard_runtime"
+    DEEP_PLANNING = "deep_planning"
+    APPROVAL_REASONING = "approval_reasoning"
+    TOOL_AUTHORING = "tool_authoring"
+    HEARTBEAT_MAINTENANCE = "heartbeat_maintenance"
+    SUBAGENT_EXECUTION = "subagent_execution"
+
+
+class ModelTier(StrEnum):
+    UTILITY = "utility"
+    STANDARD = "standard"
+    DEEP_REASONING = "deep_reasoning"
+    CRITICAL = "critical"
+
+
+class OperationType(StrEnum):
+    INGRESS_NORMALIZATION = "ingress_normalization"
+    TASK_RESOLUTION_SUPPORT = "task_resolution_support"
+    CONTEXT_COMPRESSION = "context_compression"
+    STANDARD_RUNTIME_TURN = "standard_runtime_turn"
+    DEEP_PLANNING = "deep_planning"
+    APPROVAL_REASONING = "approval_reasoning"
+    TOOL_AUTHORING = "tool_authoring"
+    TOOL_VERIFICATION = "tool_verification"
+    HEARTBEAT_MAINTENANCE = "heartbeat_maintenance"
+    SUBAGENT_ANALYSIS = "subagent_analysis"
+    SUBAGENT_EXECUTION = "subagent_execution"
+    CONFLICT_RESOLUTION = "conflict_resolution"
+
+
+class FallbackAction(StrEnum):
+    RETRY_SAME_PROVIDER = "retry_same_provider"
+    RETRY_OTHER_PROVIDER_SAME_TIER = "retry_other_provider_same_tier"
+    DOWNGRADE_TIER = "downgrade_tier"
+    ESCALATE_TIER = "escalate_tier"
+    REASSEMBLE_CONTEXT_AND_RETRY = "reassemble_context_and_retry"
+    FAIL_OPERATOR_VISIBLE = "fail_operator_visible"
+    QUEUE_FOR_RETRY = "queue_for_retry"
+
+
+class CostClass(StrEnum):
+    MINIMAL = "minimal"
+    NORMAL = "normal"
+    ELEVATED = "elevated"
+    CRITICAL = "critical"
+
+
+class ProviderHealthStatus(StrEnum):
+    HEALTHY = "healthy"
+    DEGRADED = "degraded"
+    UNAVAILABLE = "unavailable"

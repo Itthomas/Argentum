@@ -7,13 +7,22 @@ from sqlalchemy import JSON, DateTime, Enum, ForeignKey, Integer, Numeric, Strin
 from sqlalchemy.orm import Mapped, mapped_column
 
 from argentum.domain.enums import (
+    ApprovalDecision,
+    ApprovalStatus,
+    ApprovalType,
     ChannelType,
     ClaimReleaseReason,
     ClaimState,
+    CostClass,
     EventAuthStatus,
     EventProcessingStatus,
     EventType,
+    FallbackAction,
+    ModelTier,
+    OperationType,
+    ProviderHealthStatus,
     QueueClass,
+    RiskLevel,
     TaskStatus,
     TaskType,
     TriggerMode,
@@ -136,4 +145,64 @@ class TaskClaimTable(Base):
     release_reason: Mapped[ClaimReleaseReason | None] = mapped_column(Enum(ClaimReleaseReason, native_enum=False))
     superseded_by_claim_id: Mapped[str | None] = mapped_column(String(64), ForeignKey("task_claims.claim_id"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class ApprovalTable(Base):
+    __tablename__ = "approvals"
+
+    approval_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    task_id: Mapped[str] = mapped_column(String(64), ForeignKey("tasks.task_id"), nullable=False)
+    run_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    approval_type: Mapped[ApprovalType] = mapped_column(Enum(ApprovalType, native_enum=False), nullable=False)
+    risk_level: Mapped[RiskLevel] = mapped_column(Enum(RiskLevel, native_enum=False), nullable=False)
+    requested_action: Mapped[str] = mapped_column(Text(), nullable=False)
+    rationale: Mapped[str] = mapped_column(Text(), nullable=False)
+    constrained_options: Mapped[list[str]] = mapped_column(JSON(), default=list)
+    request_payload: Mapped[dict[str, Any]] = mapped_column(JSON(), default=dict)
+    eligible_resolver_refs: Mapped[list[str]] = mapped_column(JSON(), default=list)
+    status: Mapped[ApprovalStatus] = mapped_column(Enum(ApprovalStatus, native_enum=False), nullable=False)
+    requested_via_session_id: Mapped[str | None] = mapped_column(String(64), ForeignKey("sessions.session_id"))
+    requested_via_message_ref: Mapped[str | None] = mapped_column(String(255))
+    reminder_count: Mapped[int] = mapped_column(Integer(), default=0, nullable=False)
+    next_reminder_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    resolved_by_user_id: Mapped[str | None] = mapped_column(String(255))
+    resolved_by_session_id: Mapped[str | None] = mapped_column(String(64), ForeignKey("sessions.session_id"))
+    resolution_payload_hash: Mapped[str | None] = mapped_column(String(255))
+    decision: Mapped[ApprovalDecision | None] = mapped_column(Enum(ApprovalDecision, native_enum=False))
+    operator_comment: Mapped[str | None] = mapped_column(Text())
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class ModelRoutingPolicyTable(Base):
+    __tablename__ = "model_routing_policies"
+
+    policy_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    version: Mapped[str] = mapped_column(String(64), nullable=False)
+    active: Mapped[bool] = mapped_column(nullable=False, default=False)
+    provider_mappings: Mapped[list[dict[str, Any]]] = mapped_column(JSON(), default=list)
+    operation_mappings: Mapped[list[dict[str, Any]]] = mapped_column(JSON(), default=list)
+    timeout_profiles: Mapped[list[dict[str, Any]]] = mapped_column(JSON(), default=list)
+    fallback_profiles: Mapped[list[dict[str, Any]]] = mapped_column(JSON(), default=list)
+    budget_profiles: Mapped[list[dict[str, Any]]] = mapped_column(JSON(), default=list)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class ProviderHealthTable(Base):
+    __tablename__ = "provider_health"
+
+    provider_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    health_status: Mapped[ProviderHealthStatus] = mapped_column(
+        Enum(ProviderHealthStatus, native_enum=False), nullable=False
+    )
+    last_success_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_timeout_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_rate_limit_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    consecutive_failures: Mapped[int] = mapped_column(Integer(), default=0, nullable=False)
+    degraded_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    notes: Mapped[str | None] = mapped_column(Text())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)

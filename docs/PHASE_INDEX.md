@@ -28,7 +28,7 @@ Each phase is supported by derived cross-cutting working references under `docs/
 - Depends on: Phase 1.
 - Major deliverables: bounded context packet assembly, operation-tier routing, LangGraph runtime loop, approval records, approval resolver validation, bootstrap identity handling, and resume handling.
 - Verification gate: runtime flow tests, approval lifecycle tests, approval authorization tests, and prompt-budget policy coverage.
-- Status: active
+- Status: complete
 
 ## Phase 3: Memory, Scheduling, And Subagents
 
@@ -44,4 +44,4 @@ Each phase is supported by derived cross-cutting working references under `docs/
 - Depends on: Phase 3.
 - Major deliverables: tool-authoring pipeline, policy validation, generated-tool lifecycle tracking, staged activation controls, provider fallback visibility, hardening, and operational reporting.
 - Verification gate: tool pipeline verification, lifecycle and rollback tests, provider fallback behavior tests, and recovery/observability checks.
-- Status: planned
+- Status: active

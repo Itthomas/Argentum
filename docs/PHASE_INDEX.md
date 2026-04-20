@@ -20,7 +20,7 @@ Each phase is supported by derived cross-cutting working references under `docs/
 - Depends on: Phase 0.
 - Major deliverables: event/session/task/claim foundations, ingress authentication and authorization handling, queue ownership and retry semantics, persistence model direction, core invariants, claim protocol, and basic verification strategy.
 - Verification gate: durable schema coverage, event trust and retry tests, state-transition tests, and claim exclusivity tests.
-- Status: planned
+- Status: complete
 
 ## Phase 2: Runtime And Approvals
 
@@ -28,7 +28,7 @@ Each phase is supported by derived cross-cutting working references under `docs/
 - Depends on: Phase 1.
 - Major deliverables: bounded context packet assembly, operation-tier routing, LangGraph runtime loop, approval records, approval resolver validation, bootstrap identity handling, and resume handling.
 - Verification gate: runtime flow tests, approval lifecycle tests, approval authorization tests, and prompt-budget policy coverage.
-- Status: planned
+- Status: active
 
 ## Phase 3: Memory, Scheduling, And Subagents
 
@@ -44,4 +44,4 @@ Each phase is supported by derived cross-cutting working references under `docs/
 - Depends on: Phase 3.
 - Major deliverables: tool-authoring pipeline, policy validation, generated-tool lifecycle tracking, staged activation controls, provider fallback visibility, hardening, and operational reporting.
 - Verification gate: tool pipeline verification, lifecycle and rollback tests, provider fallback behavior tests, and recovery/observability checks.
-- Status: active
+- Status: planned

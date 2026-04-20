@@ -6,6 +6,23 @@
 > Required reading: `docs/reference/conventions.md`, `docs/reference/durable-data-model.md`, `docs/reference/state-machines.md`
 > Intended use: implementation packet for the durable foundation of ingress, tasks, claims, and lifecycle enforcement
 
+## Implementation Status
+
+Phase 1 is complete.
+
+Implemented outcomes:
+
+- durable enum and record definitions for events, sessions, tasks, and claims under `src/argentum/domain/`
+- governed task and claim transition helpers plus active-claim exclusivity enforcement
+- ingress intake policy evaluation for authentication rejection, queue assignment, retry, and dead-letter handling
+- SQLAlchemy table mappings, session helpers, repository scaffolding, and Alembic migration baseline under `src/argentum/persistence/` and `alembic/`
+- pytest coverage for schema invariants, ingress policy behavior, lifecycle rules, and persistence-backed claim acquisition
+
+Verification completed:
+
+- `pytest tests/unit -ra`
+- Alembic migration smoke test against SQLite confirming table creation for `events`, `sessions`, `tasks`, and `task_claims`
+
 ## Objective
 
 Establish the minimum durable foundation of the system: ingress normalization boundaries, session and task continuity, claim and lease semantics, and enforceable task-state rules.

@@ -2,28 +2,27 @@
 
 ## Active Phase
 
-Phase 1: Core spine
+Phase 2: Runtime And Approvals
 
 ## Goal
 
-Establish ingress trust handling, queue semantics, durable task continuity, core schemas, claims, and state-machine enforcement on top of the completed Phase 0 deployment boundary.
+Build the bounded reasoning loop around the durable task layer: context assembly, operation-aware model routing, lean LangGraph execution, controlled commits, and approval pause/resume.
 
 ## Immediate Tasks
 
-- Define code-level representations for `EventRecord`, `SessionRecord`, `TaskRecord`, and `TaskClaimRecord`.
-- Choose the initial PostgreSQL persistence and migration approach.
-- Implement legal task and claim transition boundaries instead of freeform mutation.
-- Define the event intake contract for ingress trust handling, queue ownership, retry behavior, and dead-letter handling.
-- Establish Phase 1 verification targets for schema, lifecycle, and claim exclusivity behavior.
+- Define `ContextPacket` and `ContextBudget` assembly behavior.
+- Establish operation-to-tier routing policy objects and defaults.
+- Implement lean runtime working-state boundaries around LangGraph.
+- Define approval request, reminder, and resumption flow boundaries.
+- Specify run commit surfaces for task summary, artifacts, and approvals.
 
 ## Current Blockers
 
-- No durable schema code exists yet for the Phase 1 objects.
-- The persistence and migration stack for PostgreSQL has not been selected yet.
+- No Phase 2 approval or routing schemas exist yet.
+- No runtime orchestration layer exists above the Phase 1 durable spine.
 
 ## Definition Of Done
 
-- Phase 1 durable records are represented in code.
-- Event, task, and claim transitions are governed rather than ad hoc.
-- Claim acquisition preserves exclusive ownership semantics.
-- Phase 1 verification targets are automated with pytest where practical.
+- Runtime turns depend on explicit context packets and routing policy.
+- Governed actions can pause for approval and resume safely.
+- Phase 2 behavior is covered by deterministic tests where practical.

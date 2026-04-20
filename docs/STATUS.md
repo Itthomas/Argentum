@@ -2,14 +2,14 @@
 
 ## Current Phase
 
-Phase 1: Core spine
+Phase 2: Runtime And Approvals
 
 ## Repo State
 
 Workspace scaffolded for phased implementation.
 Canonical architecture and appendix documents live under `docs/`.
 Python package namespace established as `argentum`.
-Pytest-based test layout is present but no tests are implemented yet.
+Phase 1 durable foundations are implemented in Python with Pydantic, SQLAlchemy, Alembic, psycopg, and pytest coverage.
 
 ## Completed
 
@@ -24,33 +24,39 @@ Pytest-based test layout is present but no tests are implemented yet.
 - Rebalanced the affected phase and reference docs to align with the remediated canonical contracts.
 - Completed Phase 0 on the Raspberry Pi by creating `/srv/argentum`, the restricted runtime user `argentum`, the protected bootstrap identity path, and the bounded runtime-writable subtree under `/srv/argentum/var`.
 - Verified `admin` SSH access, runtime write access within `/srv/argentum/var`, and runtime write failure outside the permitted subtree and against `SOUL.md`.
+- Selected SQLAlchemy 2, Alembic, and psycopg as the initial PostgreSQL persistence and migration stack.
+- Implemented Phase 1 domain enums, durable Pydantic records, governed task and claim lifecycle helpers, and ingress intake policy evaluation.
+- Added SQLAlchemy ORM tables, session helpers, claim and event repository scaffolding, and the initial Alembic migration for `events`, `sessions`, `tasks`, and `task_claims`.
+- Automated Phase 1 verification for schema invariants, ingress rejection and retry behavior, lifecycle enforcement, and claim exclusivity with pytest.
+- Smoke-tested the initial Alembic migration against SQLite to confirm the schema creates `events`, `sessions`, `tasks`, and `task_claims` plus `alembic_version`.
 
 ## In Progress
 
-- Preparing Phase 1 implementation for durable ingress, task, claim, and lifecycle foundations.
+- Preparing Phase 2 implementation for context assembly, routing policy, runtime orchestration, and approvals.
 
 ## Upcoming
 
-- Begin Phase 1 implementation for ingress, task durability, claims, and state-machine enforcement.
-- Decide initial persistence and migration stack inside the Python codebase.
+- Define the bounded context-packet and budget model.
+- Implement routing-policy objects and operation-tier defaults.
+- Add approval durability, lifecycle handling, and resumable decision application.
+- Establish the first lean runtime flow that refuses execution without an authoritative claim.
 
 ## Known Issues
 
-- No runtime code exists yet.
-- No database schema or migration framework has been selected yet.
+- No Phase 2 runtime loop, approval records, or model-routing layer exists yet.
 - No CI, lint, or formatting tooling has been added yet.
 - The placeholder bootstrap identity content in `/srv/argentum/config/bootstrap/SOUL.md` still needs to be replaced before runtime enablement.
 
 ## Technical Debt
 
-- Packaging is intentionally minimal and will need expansion once runtime dependencies are chosen.
-- The phase documents summarize requirements, but detailed implementation tickets do not exist yet.
+- Packaging is still intentionally lean and will need expansion as the runtime and approval stack grow.
+- The current repositories and migration baseline establish the durable spine, but they do not yet provide full async runtime integration.
 
 ## Risks And Blockers
 
-- Early implementation drift is a risk until Phase 1 durable schemas and transitions are enforced in code.
-- The canonical documentation is now tighter, but implementation drift remains a risk until Phase 1 durable schemas and state transitions are enforced in code.
-- Tooling choices made before Phase 1 schema work could cause avoidable churn.
+- Runtime state could drift into becoming a second durable store unless Phase 2 keeps LangGraph state narrow and ephemeral.
+- Approval pause and resume logic must stay idempotent to avoid duplicate governed actions.
+- Bootstrap identity handling still needs a concrete runtime integrity path before execution features are enabled.
 
 ## Verification Status
 
@@ -61,5 +67,7 @@ Pytest-based test layout is present but no tests are implemented yet.
 - Python project metadata: complete
 - Phase 0 defaults selected: complete
 - Phase 0 remote bootstrap: complete
-- Automated tests: not started
+- Phase 1 domain models and lifecycle rules: complete
+- Phase 1 ingress and persistence foundations: complete
+- Automated tests: started and passing
 - Runtime implementation: not started

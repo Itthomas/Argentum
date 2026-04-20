@@ -24,10 +24,12 @@ Phase 1 durable foundations are implemented in Python with Pydantic, SQLAlchemy,
 - Rebalanced the affected phase and reference docs to align with the remediated canonical contracts.
 - Completed Phase 0 on the Raspberry Pi by creating `/srv/argentum`, the restricted runtime user `argentum`, the protected bootstrap identity path, and the bounded runtime-writable subtree under `/srv/argentum/var`.
 - Verified `admin` SSH access, runtime write access within `/srv/argentum/var`, and runtime write failure outside the permitted subtree and against `SOUL.md`.
+- Revalidated the Phase 0 Pi deployment boundary from this workspace on 2026-04-20, including protected-path ownership checks and runtime-user write/deny probes.
 - Selected SQLAlchemy 2, Alembic, and psycopg as the initial PostgreSQL persistence and migration stack.
 - Implemented Phase 1 domain enums, durable Pydantic records, governed task and claim lifecycle helpers, and ingress intake policy evaluation.
 - Added SQLAlchemy ORM tables, session helpers, claim and event repository scaffolding, and the initial Alembic migration for `events`, `sessions`, `tasks`, and `task_claims`.
-- Automated Phase 1 verification for schema invariants, ingress rejection and retry behavior, lifecycle enforcement, and claim exclusivity with pytest.
+- Completed the missing Phase 1 repository behaviors for idempotent event handling and coordinated terminal-state claim release.
+- Automated Phase 1 verification for schema invariants, ingress rejection and retry behavior, lifecycle enforcement, claim exclusivity, idempotent event handling, and terminal-state claim release expectations with pytest.
 - Smoke-tested the initial Alembic migration against SQLite to confirm the schema creates `events`, `sessions`, `tasks`, and `task_claims` plus `alembic_version`.
 
 ## In Progress
@@ -67,7 +69,9 @@ Phase 1 durable foundations are implemented in Python with Pydantic, SQLAlchemy,
 - Python project metadata: complete
 - Phase 0 defaults selected: complete
 - Phase 0 remote bootstrap: complete
+- Phase 0 remote revalidation: complete
 - Phase 1 domain models and lifecycle rules: complete
 - Phase 1 ingress and persistence foundations: complete
-- Automated tests: started and passing
+- Phase 1 gate coverage: complete
+- Automated tests: passing
 - Runtime implementation: not started

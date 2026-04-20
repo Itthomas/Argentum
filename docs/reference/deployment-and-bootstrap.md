@@ -85,6 +85,7 @@ All infrastructure for this system should be new and distinct. Do not assume reu
 - the runtime user `argentum` was verified to write successfully within `/srv/argentum/var/tmp`
 - the runtime user `argentum` was verified to fail when attempting to write to `/srv/argentum`
 - the runtime user `argentum` was verified to fail when attempting to modify `/srv/argentum/config/bootstrap/SOUL.md`
+- the documented ownership and permission boundary was revalidated from this workspace on 2026-04-20 using `sudo stat` for `/srv/argentum`, `/srv/argentum/config`, `/srv/argentum/config/bootstrap`, `/srv/argentum/config/bootstrap/SOUL.md`, `/srv/argentum/var`, and `/srv/argentum/var/tmp`
 
 ## Open Bootstrap Items
 

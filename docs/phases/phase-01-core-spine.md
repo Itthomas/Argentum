@@ -10,18 +10,23 @@
 
 Phase 1 is complete.
 
+Phase 1 is now exit-clean against the verification tasks listed in this packet.
+
 Implemented outcomes:
 
 - durable enum and record definitions for events, sessions, tasks, and claims under `src/argentum/domain/`
 - governed task and claim transition helpers plus active-claim exclusivity enforcement
 - ingress intake policy evaluation for authentication rejection, queue assignment, retry, and dead-letter handling
 - SQLAlchemy table mappings, session helpers, repository scaffolding, and Alembic migration baseline under `src/argentum/persistence/` and `alembic/`
-- pytest coverage for schema invariants, ingress policy behavior, lifecycle rules, and persistence-backed claim acquisition
+- persistence-backed event idempotency handling at the repository boundary
+- coordinated terminal-task transition and claim-release workflow at the repository boundary
+- pytest coverage for schema invariants, ingress policy behavior, lifecycle rules, persistence-backed claim acquisition, idempotent event handling, and terminal-state claim release expectations
 
 Verification completed:
 
 - `pytest tests/unit -ra`
 - Alembic migration smoke test against SQLite confirming table creation for `events`, `sessions`, `tasks`, and `task_claims`
+- repository-level verification for duplicate idempotency-key reuse and terminal-task claim release in `tests/unit/persistence/test_repositories.py`
 
 ## Objective
 

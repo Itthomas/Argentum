@@ -114,6 +114,7 @@ These defaults should be used for Phase 0 unless an explicit deployment change i
 - `argentum` cannot write to `/srv/argentum`
 - `argentum` cannot modify `/srv/argentum/config/bootstrap/SOUL.md`
 - the deployment boundary has been written back into the phase and deployment reference docs
+- the documented boundary was revalidated from this workspace on 2026-04-20, including `sudo stat` checks for the protected paths and runtime-user write/deny probes
 
 ## Exit Criteria
 

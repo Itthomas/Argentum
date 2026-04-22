@@ -8,23 +8,32 @@ from typing import TypedDict
 from langgraph.graph import END, START, StateGraph
 from pydantic import BaseModel, Field
 
-from argentum.domain.enums import ClaimReleaseReason, ContinuationDecision, OperationType, RunClass, RunStatus, TaskStatus, ApprovalStatus
+from argentum.domain.enums import ApprovalStatus, ClaimReleaseReason, ContinuationDecision, OperationType, RunClass, RunStatus, SubagentStatus, TaskStatus, TaskType
 from argentum.domain.models import (
     ApprovalDecisionPayload,
     ApprovalRecord,
     ApprovalRequestDraft,
     EventRecord,
+    FollowupRequest,
     ModelRoutingPolicy,
     ProviderHealthRecord,
     ReflectionResult,
     RunWorkingState,
     RuntimeFacts,
     SessionDigest,
+    SubagentDelegationDraft,
+    SubagentRecord,
     TaskDigest,
     TaskRecord,
     ToolResultSummary,
 )
-from argentum.persistence.repositories import ApprovalRepository, ApprovalTaskTransitionRequest, ClaimRepository
+from argentum.persistence.repositories import (
+    ApprovalRepository,
+    ApprovalTaskTransitionRequest,
+    ClaimRepository,
+    FollowupTaskTransitionRequest,
+    SubagentRepository,
+)
 
 from .context import ContextAssembler
 from .routing import LLMOrchestrator, ModelSelection
@@ -38,7 +47,9 @@ class RuntimeTurnResult(BaseModel):
     continuation_decision: ContinuationDecision
     observations: list[str] = Field(default_factory=list)
     pending_questions: list[str] = Field(default_factory=list)
+    followup_request: FollowupRequest | None = None
     approval_request: ApprovalRequestDraft | None = None
+    subagent_delegation: SubagentDelegationDraft | None = None
     reflection_result: ReflectionResult | None = None
     tool_results: list[ToolResultSummary] = Field(default_factory=list)
     artifacts_created: list[str] = Field(default_factory=list)
@@ -66,6 +77,7 @@ class RuntimeExecutionResult:
     working_state: RunWorkingState
     route: ModelSelection
     approval_record: ApprovalRecord | None = None
+    subagent_record: SubagentRecord | None = None
 
 
 class _RuntimeGraphState(TypedDict, total=False):
@@ -74,6 +86,7 @@ class _RuntimeGraphState(TypedDict, total=False):
     turn_result: RuntimeTurnResult
     route: ModelSelection
     approval_record: ApprovalRecord | None
+    subagent_record: SubagentRecord | None
 
 
 class TaskRuntime:
@@ -85,20 +98,37 @@ class TaskRuntime:
         claim_repository: ClaimRepository,
         approval_repository: ApprovalRepository,
         routing_policy: ModelRoutingPolicy,
+        subagent_repository: SubagentRepository | None = None,
+        max_turns: int = 3,
     ) -> None:
         self._context_assembler = context_assembler
         self._orchestrator = orchestrator
         self._claim_repository = claim_repository
         self._approval_repository = approval_repository
         self._routing_policy = routing_policy
+        self._subagent_repository = subagent_repository
+        self._max_turns = max_turns
 
     def run(self, request: RuntimeExecutionRequest) -> RuntimeExecutionResult:
         graph = self._build_graph()
-        final_state = graph.invoke({"request": request})
+        graph_state: _RuntimeGraphState = {"request": request}
+        turns = 0
+
+        while True:
+            final_state = graph.invoke(graph_state)
+            turns += 1
+            decision = final_state["working_state"].continuation_decision
+            if decision != ContinuationDecision.CONTINUE_NOW:
+                break
+            if turns >= self._max_turns:
+                raise TaskRuntimeError("runtime exceeded max_turns while handling continue_now")
+            graph_state = {"request": request, "working_state": final_state["working_state"]}
+
         return RuntimeExecutionResult(
             working_state=final_state["working_state"],
             route=final_state["route"],
             approval_record=final_state.get("approval_record"),
+            subagent_record=final_state.get("subagent_record"),
         )
 
     def _build_graph(self):
@@ -113,6 +143,9 @@ class TaskRuntime:
         return graph.compile()
 
     def _initialize(self, state: _RuntimeGraphState) -> _RuntimeGraphState:
+        if "working_state" in state:
+            return {}
+
         request = state["request"]
         claim_record = self._claim_repository.verify_authoritative_claim(
             request.task.task_id,
@@ -168,7 +201,9 @@ class TaskRuntime:
             update={
                 "recent_observations": turn_result.observations,
                 "pending_questions": turn_result.pending_questions,
+                "followup_request": turn_result.followup_request,
                 "approval_request": turn_result.approval_request,
+                "subagent_delegation": turn_result.subagent_delegation,
                 "reflection_result": turn_result.reflection_result,
                 "recent_tool_results": turn_result.tool_results,
                 "artifacts_created": turn_result.artifacts_created,
@@ -181,6 +216,14 @@ class TaskRuntime:
         request = state["request"]
         working_state = state["working_state"]
         turn_result = state["turn_result"]
+
+        if turn_result.followup_request is not None and turn_result.continuation_decision != ContinuationDecision.SCHEDULE_FOLLOWUP:
+            raise TaskRuntimeError("follow-up requests must use the schedule_followup continuation decision")
+        if turn_result.subagent_delegation is not None and turn_result.continuation_decision != ContinuationDecision.DELEGATE:
+            raise TaskRuntimeError("subagent delegation must use the delegate continuation decision")
+
+        if turn_result.approval_request is not None and turn_result.continuation_decision != ContinuationDecision.PAUSE_WAITING_HUMAN:
+            raise TaskRuntimeError("approval requests must pause the task for human review")
 
         if turn_result.approval_request is not None:
             approval = ApprovalRecord(
@@ -213,6 +256,72 @@ class TaskRuntime:
             paused_state = working_state.model_copy(update={"current_status": RunStatus.WAITING_APPROVAL})
             return {"working_state": paused_state, "approval_record": approval_record}
 
+        if turn_result.continuation_decision == ContinuationDecision.PAUSE_WAITING_HUMAN:
+            raise TaskRuntimeError("pause_waiting_human requires a durable approval request")
+
+        if turn_result.continuation_decision == ContinuationDecision.SCHEDULE_FOLLOWUP:
+            if turn_result.followup_request is None:
+                raise TaskRuntimeError("schedule_followup requires a follow-up request payload")
+            self._claim_repository.transition_task_to_scheduled(
+                FollowupTaskTransitionRequest(
+                    task_id=request.task.task_id,
+                    claim_id=request.claim_id,
+                    next_followup_at=turn_result.followup_request.next_followup_at,
+                    transitioned_at=request.now,
+                    continuation_hint=turn_result.followup_request.continuation_hint,
+                    stale_after_at=turn_result.followup_request.stale_after_at,
+                )
+            )
+            scheduled_state = working_state.model_copy(update={"current_status": RunStatus.COMPLETED})
+            return {"working_state": scheduled_state, "approval_record": None, "subagent_record": None}
+
+        if turn_result.continuation_decision == ContinuationDecision.DELEGATE:
+            if self._subagent_repository is None:
+                raise TaskRuntimeError("delegate continuation requires a subagent repository")
+            if turn_result.subagent_delegation is None:
+                raise TaskRuntimeError("delegate continuation requires a subagent delegation payload")
+
+            draft = turn_result.subagent_delegation
+            child_task = TaskRecord(
+                task_id=draft.child_task_id,
+                title=draft.child_title,
+                objective=draft.delegated_objective,
+                normalized_objective=draft.delegated_objective.lower(),
+                task_type=TaskType.CHILD_TASK,
+                status=TaskStatus.PROPOSED,
+                priority=draft.child_priority,
+                created_by_event_id=request.event.event_id,
+                parent_task_id=request.task.task_id,
+                success_criteria=draft.child_success_criteria,
+                metadata_json=draft.metadata_json,
+                created_at=request.now,
+                updated_at=request.now,
+            )
+            subagent_record = SubagentRecord(
+                subagent_id=f"subagent-{request.run_id}",
+                parent_task_id=request.task.task_id,
+                child_task_id=draft.child_task_id,
+                role=draft.role,
+                status=SubagentStatus.PROPOSED,
+                model_policy_ref=draft.model_policy_ref,
+                delegated_objective=draft.delegated_objective,
+                expected_output_contract=draft.expected_output_contract,
+                metadata_json=draft.metadata_json,
+                created_at=request.now,
+                updated_at=request.now,
+            )
+            _, _, created_subagent = self._subagent_repository.begin_delegation(
+                parent_task_id=request.task.task_id,
+                claim_id=request.claim_id,
+                child_task=child_task,
+                subagent=subagent_record,
+                now=request.now,
+                blocked_reason=draft.blocked_reason or f"waiting for delegated child task {draft.child_task_id}",
+                stale_after_at=draft.stale_after_at,
+            )
+            delegating_state = working_state.model_copy(update={"current_status": RunStatus.DELEGATING})
+            return {"working_state": delegating_state, "approval_record": None, "subagent_record": created_subagent}
+
         final_status = RunStatus.EXECUTING
         if turn_result.continuation_decision == ContinuationDecision.COMPLETE:
             self._claim_repository.transition_task_to_terminal(
@@ -224,6 +333,12 @@ class TaskRuntime:
                 request=self._terminal_transition_request(request, TaskStatus.FAILED, ClaimReleaseReason.FAILED)
             )
             final_status = RunStatus.FAILED
+        elif turn_result.continuation_decision == ContinuationDecision.CONTINUE_NOW:
+            final_status = RunStatus.EXECUTING
+        else:
+            raise TaskRuntimeError(
+                f"continuation decision {turn_result.continuation_decision} requires durable handling before runtime completion"
+            )
 
         finalized_state = working_state.model_copy(update={"current_status": final_status})
         return {"working_state": finalized_state, "approval_record": None}

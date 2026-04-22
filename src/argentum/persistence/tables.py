@@ -10,6 +10,8 @@ from argentum.domain.enums import (
     ApprovalDecision,
     ApprovalStatus,
     ApprovalType,
+    ArtifactType,
+    ArtifactVisibility,
     ChannelType,
     ClaimReleaseReason,
     ClaimState,
@@ -18,11 +20,16 @@ from argentum.domain.enums import (
     EventProcessingStatus,
     EventType,
     FallbackAction,
+    MemorySourceKind,
+    MemoryType,
     ModelTier,
     OperationType,
     ProviderHealthStatus,
     QueueClass,
+    RetentionClass,
     RiskLevel,
+    SubagentRole,
+    SubagentStatus,
     TaskStatus,
     TaskType,
     TriggerMode,
@@ -205,4 +212,65 @@ class ProviderHealthTable(Base):
     consecutive_failures: Mapped[int] = mapped_column(Integer(), default=0, nullable=False)
     degraded_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     notes: Mapped[str | None] = mapped_column(Text())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class MemoryTable(Base):
+    __tablename__ = "memories"
+
+    memory_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    memory_type: Mapped[MemoryType] = mapped_column(Enum(MemoryType, native_enum=False), nullable=False)
+    content: Mapped[str] = mapped_column(Text(), nullable=False)
+    summary: Mapped[str | None] = mapped_column(Text())
+    embedding_ref: Mapped[str | None] = mapped_column(String(255))
+    source_kind: Mapped[MemorySourceKind] = mapped_column(Enum(MemorySourceKind, native_enum=False), nullable=False)
+    source_ref: Mapped[str | None] = mapped_column(String(255))
+    confidence: Mapped[float | None] = mapped_column(Numeric(5, 4))
+    recency_weight: Mapped[float | None] = mapped_column(Numeric(5, 4))
+    tags: Mapped[list[str]] = mapped_column(JSON(), default=list)
+    metadata_json: Mapped[dict[str, Any]] = mapped_column(JSON(), default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class ArtifactTable(Base):
+    __tablename__ = "artifacts"
+
+    artifact_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    artifact_type: Mapped[ArtifactType] = mapped_column(Enum(ArtifactType, native_enum=False), nullable=False)
+    task_id: Mapped[str] = mapped_column(String(64), ForeignKey("tasks.task_id"), nullable=False)
+    run_id: Mapped[str | None] = mapped_column(String(64))
+    storage_ref: Mapped[str] = mapped_column(String(255), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text())
+    content_hash: Mapped[str | None] = mapped_column(String(255))
+    visibility: Mapped[ArtifactVisibility] = mapped_column(Enum(ArtifactVisibility, native_enum=False), nullable=False)
+    retention_class: Mapped[RetentionClass] = mapped_column(Enum(RetentionClass, native_enum=False), nullable=False)
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    purge_after_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    metadata_json: Mapped[dict[str, Any]] = mapped_column(JSON(), default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class SubagentTable(Base):
+    __tablename__ = "subagents"
+
+    subagent_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    parent_task_id: Mapped[str] = mapped_column(String(64), ForeignKey("tasks.task_id"), nullable=False)
+    child_task_id: Mapped[str] = mapped_column(String(64), ForeignKey("tasks.task_id"), nullable=False)
+    role: Mapped[SubagentRole] = mapped_column(Enum(SubagentRole, native_enum=False), nullable=False)
+    status: Mapped[SubagentStatus] = mapped_column(Enum(SubagentStatus, native_enum=False), nullable=False)
+    model_policy_ref: Mapped[str | None] = mapped_column(String(64))
+    delegated_objective: Mapped[str] = mapped_column(Text(), nullable=False)
+    expected_output_contract: Mapped[str] = mapped_column(Text(), nullable=False)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    heartbeat_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    failed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    timeout_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    result_artifact_refs: Mapped[list[str]] = mapped_column(JSON(), default=list)
+    error_summary: Mapped[str | None] = mapped_column(Text())
+    metadata_json: Mapped[dict[str, Any]] = mapped_column(JSON(), default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)

@@ -2,14 +2,14 @@
 
 ## Current Phase
 
-Phase 3: Memory, Scheduling, And Subagents
+Phase 4: Self-Extension And Hardening
 
 ## Repo State
 
 Workspace scaffolded for phased implementation.
 Canonical architecture and appendix documents live under `docs/`.
 Python package namespace established as `argentum`.
-Phase 2 runtime and approval foundations are implemented in Python with Pydantic, SQLAlchemy, Alembic, LangGraph, and pytest coverage.
+Phase 3 memory, scheduling, recovery, and delegation foundations are implemented in Python with Pydantic, SQLAlchemy, Alembic, LangGraph, and pytest coverage.
 
 ## Completed
 
@@ -37,17 +37,23 @@ Phase 2 runtime and approval foundations are implemented in Python with Pydantic
 - Implemented operation-aware routing policy defaults, provider-health-aware route selection, and an orchestration boundary for model access.
 - Implemented a lean LangGraph runtime path that refuses execution without an authoritative claim, pauses durably for approval, resumes after approval resolution, and persists terminal task transitions through the Phase 1 durable spine.
 - Verified Phase 2 with focused and full pytest coverage plus a SQLite Alembic smoke upgrade through `20260420_0002`.
+- Added Phase 3 enums, Pydantic records, and lifecycle helpers for memories, artifacts, follow-up scheduling, and subagents.
+- Added Phase 3 repositories for memory retrieval, artifact provenance, stale-work inspection, follow-up scheduling, and subagent parent-child handling.
+- Implemented heartbeat inspection and stale-work recovery services that reconstruct fresh maintenance state from durable records.
+- Extended the runtime to loop `continue_now` turns within a bounded run, persist scheduled follow-ups, and create durable delegated child-task and subagent records.
+- Added the Phase 3 Alembic migration for `memories`, `artifacts`, and `subagents` plus the stale-work lookup indexes required by recovery and heartbeat inspection.
+- Verified Phase 3 with focused and full pytest coverage plus a SQLite Alembic smoke upgrade through `20260421_0003`.
 
 ## In Progress
 
-- Preparing Phase 3 implementation for memory retrieval, scheduling, stale-state recovery, and bounded subagents.
+- Preparing Phase 4 implementation for governed self-extension, provider-hardening, and deeper observability.
 
 ## Upcoming
 
-- Define typed memory persistence and retrieval contracts.
-- Add heartbeat, cron, and follow-up scheduling entry points.
-- Design recovery behavior for stale approvals, stale claims, and lost child tasks.
-- Implement bounded subagent parent-child tracking and result handling.
+- Define tool proposal, validation, verification, approval, and staged activation boundaries.
+- Expand provider degradation visibility and fallback policy behavior.
+- Add deeper observability for autonomous actions, tool use, and cost visibility.
+- Harden restart and recovery handling for interrupted high-consequence operations.
 
 ## Known Issues
 
@@ -57,12 +63,12 @@ Phase 2 runtime and approval foundations are implemented in Python with Pydantic
 ## Technical Debt
 
 - Packaging is still intentionally lean and will need expansion as the runtime and approval stack grow.
-- The current runtime path is intentionally narrow and does not yet include Phase 3 memory retrieval, scheduling, or delegated-worker lifecycle behavior.
+- Memory retrieval currently validates the service boundary and ranking policy locally; PostgreSQL and pgvector deployment hardening still needs environment-backed verification.
 
 ## Risks And Blockers
 
-- Phase 3 scheduling and stale-state recovery could become entangled with runtime logic if the boundaries are not preserved.
-- Subagent contracts must remain narrow so delegated workers do not duplicate the whole system runtime.
+- Phase 4 self-extension work increases risk if validation, approval, and staged activation boundaries are weak.
+- Provider fallback visibility still needs to become operator-legible for high-consequence operations.
 - The placeholder bootstrap identity content still blocks real runtime enablement even though the integrity path now exists.
 
 ## Verification Status
@@ -80,5 +86,7 @@ Phase 2 runtime and approval foundations are implemented in Python with Pydantic
 - Phase 1 gate coverage: complete
 - Phase 2 runtime and approvals: complete
 - Phase 2 migration smoke test: complete
+- Phase 3 memory, scheduling, and subagents: complete
+- Phase 3 migration smoke test: complete
 - Automated tests: passing
-- Phase 3 implementation: not started
+- Phase 4 implementation: not started

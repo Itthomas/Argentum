@@ -79,3 +79,19 @@ def test_evaluate_event_intake_prioritizes_approval_events() -> None:
 
     assert decision.queue_class == QueueClass.APPROVAL
     assert decision.queue_priority == 90
+
+
+def test_evaluate_event_intake_keeps_inline_events_unconsumed_until_run_exists() -> None:
+    event = build_event()
+
+    decision = evaluate_event_intake(
+        event,
+        policy=EventIntakePolicy(interactive_inline_enabled=True),
+        now=timestamp(),
+    )
+    updated = apply_intake_decision(event, decision, now=timestamp())
+
+    assert decision.inline_execution is True
+    assert decision.processing_status == EventProcessingStatus.RECEIVED
+    assert updated.processing_status == EventProcessingStatus.RECEIVED
+    assert updated.consumed_by_run_id is None

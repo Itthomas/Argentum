@@ -111,7 +111,7 @@ def evaluate_event_intake(
         and event.processing_status == EventProcessingStatus.RECEIVED
     ):
         return EventIntakeDecision(
-            processing_status=EventProcessingStatus.CONSUMED,
+            processing_status=EventProcessingStatus.RECEIVED,
             queue_class=queue_class,
             queue_priority=queue_priority,
             queued_at=None,

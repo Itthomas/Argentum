@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 from hashlib import sha256
+from math import ceil
 import json
 from pathlib import Path
 from typing import Any
@@ -41,7 +42,9 @@ def _token_count(value: Any) -> int:
         serialized = json.dumps(value.model_dump(mode="json"), sort_keys=True)
     else:
         serialized = json.dumps(value, sort_keys=True, default=str)
-    return len(serialized.split())
+    # Use a conservative character-based estimate so JSON-heavy packets do not
+    # undercount prompt size as severely as simple word splitting.
+    return ceil(len(serialized) / 3)
 
 
 def default_context_budget(run_class: RunClass) -> ContextBudget:

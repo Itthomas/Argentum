@@ -2,27 +2,27 @@
 
 ## Active Phase
 
-Phase 3: Memory, Scheduling, And Subagents
+Phase 4: Self-Extension And Hardening
 
 ## Goal
 
-Extend the core system with durable memory retrieval, scheduled and heartbeat-driven continuation, stale-state recovery, and bounded delegated work.
+Introduce governed self-extension and production hardening without violating the core constraints on approvals, explicit tooling, provider policy, and auditability.
 
 ## Immediate Tasks
 
-- Define typed memory persistence and retrieval contracts.
-- Establish heartbeat-triggered and follow-up-triggered run entry points using fresh runtime state.
-- Design recovery logic for stale approvals, stale claims, and lost child tasks.
-- Implement bounded subagent contracts and parent-child result handling.
-- Define artifact provenance requirements in code-facing terms.
+- Define tool proposal, validation, verification, approval, and activation boundaries.
+- Specify bounded initial activation scopes and explicit scope-widening rules.
+- Expand provider degradation tracking and fallback visibility.
+- Add observability surfaces for autonomous actions, tool use, and cost visibility.
+- Harden restart and recovery flows for interrupted high-consequence operations.
 
 ## Current Blockers
 
-- No Phase 3 memory, artifact, or subagent schemas exist yet.
-- No heartbeat or recovery orchestration layer exists above the Phase 2 runtime.
+- No generated-tool lifecycle records or staged activation handling exist yet.
+- Provider fallback visibility and high-consequence observability are still minimal.
 
 ## Definition Of Done
 
-- Memory, scheduling, and delegated work operate through durable policy-driven flows.
-- No waiting task or child task can remain indefinitely without a defined policy outcome.
-- Phase 3 behavior is covered by deterministic tests where practical.
+- Generated tools cannot activate without explicit approval.
+- Provider fallback and degradation behavior are visible and policy-driven.
+- Phase 4 behavior is covered by deterministic tests where practical.

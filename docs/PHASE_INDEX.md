@@ -36,7 +36,7 @@ Each phase is supported by derived cross-cutting working references under `docs/
 - Depends on: Phase 2.
 - Major deliverables: memory layer, reaper behavior, scheduling flows, child-task lifecycle handling, and parent-child policy enforcement.
 - Verification gate: stale-state recovery tests, heartbeat maintenance tests, and subagent lifecycle tests.
-- Status: planned
+- Status: complete
 
 ## Phase 4: Self-Extension And Hardening
 

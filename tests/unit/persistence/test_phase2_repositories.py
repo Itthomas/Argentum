@@ -123,3 +123,6 @@ def test_approval_repository_records_reminders_and_idempotent_resolution(session
 
     with pytest.raises(ApprovalLifecycleError, match="already resolved"):
         repository.resolve_approval(payload.model_copy(update={"resolution_payload_hash": "hash-2"}))
+
+    with pytest.raises(ApprovalLifecycleError, match="already resolved"):
+        repository.resolve_approval(payload.model_copy(update={"resolved_by_user_id": "operator:other"}))

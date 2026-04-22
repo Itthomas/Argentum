@@ -33,7 +33,7 @@ from argentum.domain import (
 )
 from argentum.domain.lifecycle import ClaimLifecycleError
 from argentum.persistence.base import Base
-from argentum.persistence.repositories import ApprovalRepository, ClaimAcquisitionRequest, ClaimRepository, EventRepository
+from argentum.persistence.repositories import ApprovalRepository, ClaimAcquisitionRequest, ClaimRepository, EventRepository, SubagentRepository
 from argentum.persistence.session import create_session_factory, create_sqlalchemy_engine
 from argentum.persistence.tables import TaskClaimTable, TaskTable
 from argentum.runtime import BootstrapIdentitySource, ContextAssembler, LLMOrchestrator, RuntimeExecutionRequest, RuntimeTurnResult, TaskRuntime, build_default_routing_policy, select_route
@@ -131,6 +131,7 @@ def build_runtime(tmp_path: Path, session: Session, gateway: FakeGateway) -> Tas
         claim_repository=ClaimRepository(session),
         approval_repository=ApprovalRepository(session),
         routing_policy=policy,
+        subagent_repository=SubagentRepository(session),
     )
 
 
@@ -162,7 +163,7 @@ def test_context_assembler_trims_in_documented_order(tmp_path: Path) -> None:
         approval_constraints=["approval-required"],
         token_budget=ContextBudget(
             run_class=RunClass.STANDARD_RUNTIME,
-            target_input_tokens=800,
+            target_input_tokens=1200,
             reserved_output_tokens=20,
             reserved_tool_schema_tokens=20,
             max_bootstrap_tokens=12,
@@ -183,10 +184,13 @@ def test_context_assembler_trims_in_documented_order(tmp_path: Path) -> None:
     bootstrap_index = next(index for index, note in enumerate(notes) if "bootstrap" in note)
 
     assert artifact_index < open_task_index < memory_index < session_index < task_index < bootstrap_index
-    assert len(packet.model_dump_json().split()) <= (
-        packet.token_budget.target_input_tokens
-        - packet.token_budget.reserved_output_tokens
-        - packet.token_budget.reserved_tool_schema_tokens
+    assert len(packet.model_dump_json()) <= (
+        (
+            packet.token_budget.target_input_tokens
+            - packet.token_budget.reserved_output_tokens
+            - packet.token_budget.reserved_tool_schema_tokens
+        )
+        * 3
     )
 
 
@@ -351,3 +355,48 @@ def test_task_runtime_pauses_for_approval_and_resumes_safely(session: Session, t
     assert completed_task.pending_approval_id is None
     assert completed_claim is not None
     assert completed_claim.claim_state == ClaimState.RELEASED
+
+
+@pytest.mark.parametrize(
+    ("continuation_decision", "message"),
+    [
+        (ContinuationDecision.SCHEDULE_FOLLOWUP, "requires a follow-up request payload"),
+        (ContinuationDecision.DELEGATE, "requires a subagent delegation payload"),
+        (ContinuationDecision.PAUSE_WAITING_HUMAN, "requires a durable approval request"),
+    ],
+)
+def test_task_runtime_rejects_missing_non_terminal_continuation_payloads(
+    session: Session,
+    tmp_path: Path,
+    continuation_decision: ContinuationDecision,
+    message: str,
+) -> None:
+    claim_repository = ClaimRepository(session)
+    claim_repository.acquire_claim(
+        ClaimAcquisitionRequest(
+            task_id="task-1",
+            claim_id="claim-guardrail",
+            run_id="run-guardrail",
+            claimed_by="runtime-a",
+            claim_duration=timedelta(minutes=5),
+            claimed_at=timestamp(),
+        )
+    )
+    session.commit()
+
+    runtime = build_runtime(
+        tmp_path,
+        session,
+        FakeGateway([RuntimeTurnResult(continuation_decision=continuation_decision)]),
+    )
+
+    with pytest.raises(Exception, match=message):
+        runtime.run(
+            RuntimeExecutionRequest(
+                run_id="run-guardrail",
+                claim_id="claim-guardrail",
+                event=build_event(),
+                task=build_task(TaskStatus.ACTIVE),
+                now=timestamp(),
+            )
+        )

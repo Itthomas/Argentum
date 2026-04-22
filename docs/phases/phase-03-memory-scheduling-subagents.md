@@ -6,6 +6,24 @@
 > Required reading: `docs/reference/conventions.md`, `docs/reference/durable-data-model.md`, `docs/reference/observability-and-operations.md`
 > Intended use: implementation packet for long-term memory, scheduling, stale-state recovery, and bounded delegation
 
+Phase 3 is complete.
+
+Phase 3 is now exit-clean against the verification tasks listed in this packet.
+
+Implemented outcomes:
+
+- canonical Phase 3 enums, durable records, and lifecycle helpers for memories, artifacts, and subagents under `src/argentum/domain/`
+- SQLAlchemy tables, metadata registration, and Alembic migration coverage for `memories`, `artifacts`, and `subagents` plus stale-work indexes on `tasks.stale_after_at`
+- repository-backed memory filtering and ranking, artifact provenance recording, stale-task and stale-claim inspection, and durable subagent parent-child result handling under `src/argentum/persistence/repositories.py`
+- fresh-state heartbeat inspection and stale-work recovery services under `src/argentum/runtime/maintenance.py`
+- runtime continuation support for `continue_now`, `schedule_followup`, and durable delegated child-task creation under `src/argentum/runtime/graph.py`
+- pytest coverage for memory ranking, stale-state recovery, heartbeat inspection, follow-up scheduling, and parent-child completed, failed, timed-out, and lost outcomes
+
+Verification completed:
+
+- `pytest tests/unit -ra`
+- SQLite Alembic smoke upgrade through `20260421_0003` confirming table creation for `memories`, `artifacts`, and `subagents` alongside the earlier durable schema
+
 ## Objective
 
 Extend the core system with durable memory retrieval, scheduled and heartbeat-driven continuation, stale-state recovery, and bounded delegated work.

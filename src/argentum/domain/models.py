@@ -9,6 +9,8 @@ from .enums import (
     ApprovalDecision,
     ApprovalStatus,
     ApprovalType,
+    ArtifactType,
+    ArtifactVisibility,
     ChannelType,
     ClaimReleaseReason,
     ClaimState,
@@ -18,13 +20,18 @@ from .enums import (
     EventProcessingStatus,
     EventType,
     FallbackAction,
+    MemorySourceKind,
+    MemoryType,
     ModelTier,
     OperationType,
     ProviderHealthStatus,
     QueueClass,
+    RetentionClass,
     RiskLevel,
     RunClass,
     RunStatus,
+    SubagentRole,
+    SubagentStatus,
     TaskStatus,
     TaskType,
     TriggerMode,
@@ -105,6 +112,8 @@ class EventRecord(ArgentumModel):
             raise ValueError("rejected events must not remain queued for normal execution")
         if self.processing_status == EventProcessingStatus.DEAD_LETTERED and self.dead_letter_reason is None:
             raise ValueError("dead-lettered events require a dead-letter reason")
+        if self.processing_status == EventProcessingStatus.CONSUMED and self.consumed_by_run_id is None:
+            raise ValueError("consumed events must record the run that consumed them")
         return self
 
 
@@ -339,6 +348,93 @@ class ProviderHealthRecord(ArgentumModel):
     updated_at: datetime
 
 
+class MemoryRecord(ArgentumModel):
+    memory_id: str
+    memory_type: MemoryType
+    content: str
+    summary: str | None = None
+    embedding_ref: str | None = None
+    source_kind: MemorySourceKind
+    source_ref: str | None = None
+    confidence: float | None = None
+    recency_weight: float | None = None
+    tags: list[str] = Field(default_factory=list)
+    metadata_json: dict[str, Any] = Field(default_factory=dict)
+    created_at: datetime
+    updated_at: datetime
+
+
+class ArtifactRecord(ArgentumModel):
+    artifact_id: str
+    artifact_type: ArtifactType
+    task_id: str
+    run_id: str | None = None
+    storage_ref: str
+    description: str | None = None
+    content_hash: str | None = None
+    visibility: ArtifactVisibility
+    retention_class: RetentionClass
+    expires_at: datetime | None = None
+    archived_at: datetime | None = None
+    purge_after_at: datetime | None = None
+    metadata_json: dict[str, Any] = Field(default_factory=dict)
+    created_at: datetime
+    updated_at: datetime
+
+
+class SubagentRecord(ArgentumModel):
+    subagent_id: str
+    parent_task_id: str
+    child_task_id: str
+    role: SubagentRole
+    status: SubagentStatus
+    model_policy_ref: str | None = None
+    delegated_objective: str
+    expected_output_contract: str
+    started_at: datetime | None = None
+    heartbeat_at: datetime | None = None
+    completed_at: datetime | None = None
+    failed_at: datetime | None = None
+    timeout_at: datetime | None = None
+    result_artifact_refs: list[str] = Field(default_factory=list)
+    error_summary: str | None = None
+    metadata_json: dict[str, Any] = Field(default_factory=dict)
+    created_at: datetime
+    updated_at: datetime
+
+    @model_validator(mode="after")
+    def validate_subagent_invariants(self) -> SubagentRecord:
+        if self.status == SubagentStatus.RUNNING and self.started_at is None:
+            raise ValueError("running subagents must record started_at")
+        if self.status == SubagentStatus.COMPLETED and self.completed_at is None:
+            raise ValueError("completed subagents must record completed_at")
+        if self.status == SubagentStatus.FAILED and self.failed_at is None:
+            raise ValueError("failed subagents must record failed_at")
+        if self.status in {SubagentStatus.TIMED_OUT, SubagentStatus.LOST} and self.timeout_at is None:
+            raise ValueError("timed out or lost subagents must record timeout_at")
+        return self
+
+
+class FollowupRequest(ArgentumModel):
+    next_followup_at: datetime
+    continuation_hint: str | None = None
+    stale_after_at: datetime | None = None
+
+
+class SubagentDelegationDraft(ArgentumModel):
+    child_task_id: str
+    child_title: str
+    delegated_objective: str
+    expected_output_contract: str
+    role: SubagentRole
+    model_policy_ref: str | None = None
+    child_success_criteria: list[str] = Field(default_factory=list)
+    child_priority: int = 1
+    blocked_reason: str | None = None
+    stale_after_at: datetime | None = None
+    metadata_json: dict[str, Any] = Field(default_factory=dict)
+
+
 class RuntimeFacts(ArgentumModel):
     runtime_lane: str | None = None
     current_time: datetime
@@ -472,8 +568,10 @@ class RunWorkingState(ArgentumModel):
     recent_observations: list[str] = Field(default_factory=list)
     recent_tool_results: list[ToolResultSummary] = Field(default_factory=list)
     pending_questions: list[str] = Field(default_factory=list)
+    followup_request: FollowupRequest | None = None
     approval_request: ApprovalRequestDraft | None = None
     approval_result: ApprovalDecisionPayload | None = None
+    subagent_delegation: SubagentDelegationDraft | None = None
     reflection_result: ReflectionResult | None = None
     continuation_decision: ContinuationDecision | None = None
     last_error: str | None = None

@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from .enums import ApprovalDecision, ApprovalStatus, ClaimReleaseReason, ClaimState, TaskStatus
-from .models import ApprovalRecord, TaskClaimRecord, TaskRecord
+from .enums import ApprovalDecision, ApprovalStatus, ClaimReleaseReason, ClaimState, SubagentStatus, TaskStatus
+from .models import ApprovalRecord, SubagentRecord, TaskClaimRecord, TaskRecord
 
 TASK_TRANSITIONS: dict[TaskStatus, frozenset[TaskStatus]] = {
     TaskStatus.PROPOSED: frozenset({TaskStatus.ACTIVE, TaskStatus.SCHEDULED, TaskStatus.ABANDONED}),
@@ -23,7 +23,14 @@ TASK_TRANSITIONS: dict[TaskStatus, frozenset[TaskStatus]] = {
         {TaskStatus.ACTIVE, TaskStatus.BLOCKED_TIMEOUT, TaskStatus.ABANDONED, TaskStatus.NEEDS_OPERATOR_ATTENTION}
     ),
     TaskStatus.BLOCKED: frozenset(
-        {TaskStatus.ACTIVE, TaskStatus.BLOCKED_TIMEOUT, TaskStatus.ABANDONED, TaskStatus.FAILED, TaskStatus.NEEDS_OPERATOR_ATTENTION}
+        {
+            TaskStatus.ACTIVE,
+            TaskStatus.SCHEDULED,
+            TaskStatus.BLOCKED_TIMEOUT,
+            TaskStatus.ABANDONED,
+            TaskStatus.FAILED,
+            TaskStatus.NEEDS_OPERATOR_ATTENTION,
+        }
     ),
     TaskStatus.SCHEDULED: frozenset({TaskStatus.ACTIVE, TaskStatus.EXPIRED, TaskStatus.ABANDONED}),
     TaskStatus.STALLED: frozenset({TaskStatus.ACTIVE, TaskStatus.ABANDONED, TaskStatus.NEEDS_OPERATOR_ATTENTION}),
@@ -69,6 +76,18 @@ APPROVAL_TRANSITIONS: dict[ApprovalStatus, frozenset[ApprovalStatus]] = {
     ApprovalStatus.CANCELLED: frozenset(),
 }
 
+SUBAGENT_TRANSITIONS: dict[SubagentStatus, frozenset[SubagentStatus]] = {
+    SubagentStatus.PROPOSED: frozenset({SubagentStatus.RUNNING, SubagentStatus.CANCELLED}),
+    SubagentStatus.RUNNING: frozenset(
+        {SubagentStatus.COMPLETED, SubagentStatus.FAILED, SubagentStatus.TIMED_OUT, SubagentStatus.LOST, SubagentStatus.CANCELLED}
+    ),
+    SubagentStatus.COMPLETED: frozenset(),
+    SubagentStatus.FAILED: frozenset(),
+    SubagentStatus.TIMED_OUT: frozenset(),
+    SubagentStatus.LOST: frozenset(),
+    SubagentStatus.CANCELLED: frozenset(),
+}
+
 TERMINAL_TASK_STATUSES = frozenset(
     {TaskStatus.COMPLETED, TaskStatus.FAILED, TaskStatus.FAILED_TIMEOUT, TaskStatus.EXPIRED, TaskStatus.ABANDONED}
 )
@@ -87,6 +106,10 @@ class ClaimLifecycleError(ValueError):
 
 class ApprovalLifecycleError(ValueError):
     """Raised when an approval transition violates the canonical state machine."""
+
+
+class SubagentLifecycleError(ValueError):
+    """Raised when a subagent transition violates the canonical state machine."""
 
 
 def _now_or(value: datetime | None) -> datetime:
@@ -205,6 +228,45 @@ def transition_approval_status(
         updates["resolved_at"] = when
 
     return approval.model_copy(update=updates)
+
+
+def transition_subagent_status(
+    subagent: SubagentRecord,
+    new_status: SubagentStatus,
+    *,
+    transition_time: datetime | None = None,
+    heartbeat_at: datetime | None = None,
+    result_artifact_refs: list[str] | None = None,
+    error_summary: str | None = None,
+) -> SubagentRecord:
+    if new_status not in SUBAGENT_TRANSITIONS[subagent.status]:
+        raise SubagentLifecycleError(f"illegal subagent transition: {subagent.status} -> {new_status}")
+
+    when = _now_or(transition_time)
+    updates: dict[str, object | None] = {
+        "status": new_status,
+        "updated_at": when,
+    }
+
+    if heartbeat_at is not None:
+        updates["heartbeat_at"] = heartbeat_at
+
+    if new_status == SubagentStatus.RUNNING:
+        updates["started_at"] = subagent.started_at or when
+    elif new_status == SubagentStatus.COMPLETED:
+        updates["completed_at"] = when
+        updates["result_artifact_refs"] = list(result_artifact_refs or subagent.result_artifact_refs)
+        updates["error_summary"] = None
+    elif new_status == SubagentStatus.FAILED:
+        updates["failed_at"] = when
+        updates["error_summary"] = error_summary
+    elif new_status in {SubagentStatus.TIMED_OUT, SubagentStatus.LOST}:
+        updates["timeout_at"] = when
+        updates["error_summary"] = error_summary
+    elif new_status == SubagentStatus.CANCELLED:
+        updates["error_summary"] = error_summary
+
+    return subagent.model_copy(update=updates)
 
 
 def ensure_exclusive_active_claims(

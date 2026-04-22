@@ -206,3 +206,64 @@ class ProviderHealthStatus(StrEnum):
     HEALTHY = "healthy"
     DEGRADED = "degraded"
     UNAVAILABLE = "unavailable"
+
+
+class MemoryType(StrEnum):
+    USER_PROFILE = "user_profile"
+    OPERATOR_PREFERENCE = "operator_preference"
+    PROJECT_KNOWLEDGE = "project_knowledge"
+    ENVIRONMENT_FACT = "environment_fact"
+    TASK_OUTCOME = "task_outcome"
+    PROCEDURAL_PATTERN = "procedural_pattern"
+    FOLLOWUP_COMMITMENT = "followup_commitment"
+
+
+class MemorySourceKind(StrEnum):
+    TASK = "task"
+    SESSION = "session"
+    OPERATOR = "operator"
+    TOOL_OUTPUT = "tool_output"
+    SYSTEM = "system"
+    IMPORTED = "imported"
+
+
+class ArtifactType(StrEnum):
+    REPORT = "report"
+    FILE = "file"
+    TEST_RESULT = "test_result"
+    GENERATED_TOOL_BUNDLE = "generated_tool_bundle"
+    EXTERNAL_LINK = "external_link"
+    MESSAGE_SNAPSHOT = "message_snapshot"
+    STRUCTURED_OUTPUT = "structured_output"
+
+
+class ArtifactVisibility(StrEnum):
+    INTERNAL = "internal"
+    OPERATOR_VISIBLE = "operator_visible"
+    SHAREABLE = "shareable"
+
+
+class RetentionClass(StrEnum):
+    EPHEMERAL = "ephemeral"
+    OPERATIONAL = "operational"
+    OPERATOR_RECORD = "operator_record"
+    COMPLIANCE = "compliance"
+    GENERATED_TOOL = "generated_tool"
+
+
+class SubagentRole(StrEnum):
+    ANALYSIS = "analysis"
+    RESEARCH = "research"
+    EXECUTION = "execution"
+    VALIDATION = "validation"
+    TOOL_AUTHORING = "tool_authoring"
+
+
+class SubagentStatus(StrEnum):
+    PROPOSED = "proposed"
+    RUNNING = "running"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    TIMED_OUT = "timed_out"
+    LOST = "lost"
+    CANCELLED = "cancelled"

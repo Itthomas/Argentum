@@ -2,30 +2,47 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from decimal import Decimal
+import re
 
 from sqlalchemy import Select, select
 from sqlalchemy.orm import Session
 
-from argentum.domain.enums import ApprovalDecision, ApprovalStatus, ClaimReleaseReason, ClaimState, EventProcessingStatus, TaskStatus
+from argentum.domain.enums import ApprovalDecision, ApprovalStatus, ClaimReleaseReason, ClaimState, EventProcessingStatus, SubagentStatus, TaskStatus
 from argentum.domain.ingress import EventIntakePolicy, apply_intake_decision, evaluate_event_intake
 from argentum.domain.lifecycle import (
     ApprovalLifecycleError,
     ClaimLifecycleError,
+    SubagentLifecycleError,
     transition_approval_status,
     transition_claim_state,
+    transition_subagent_status,
     transition_task_status,
 )
 from argentum.domain.models import (
     ApprovalDecisionPayload,
     ApprovalRecord,
+    ArtifactRecord,
     EventRecord,
+    MemoryRecord,
     ModelRoutingPolicy,
     ProviderHealthRecord,
+    SubagentRecord,
     TaskClaimRecord,
     TaskRecord,
 )
 
-from .tables import ApprovalTable, EventTable, ModelRoutingPolicyTable, ProviderHealthTable, TaskClaimTable, TaskTable
+from .tables import (
+    ApprovalTable,
+    ArtifactTable,
+    EventTable,
+    MemoryTable,
+    ModelRoutingPolicyTable,
+    ProviderHealthTable,
+    SubagentTable,
+    TaskClaimTable,
+    TaskTable,
+)
 
 
 @dataclass(slots=True, frozen=True)
@@ -68,6 +85,53 @@ class ApprovalTaskTransitionRequest:
     transitioned_at: datetime
 
 
+@dataclass(slots=True, frozen=True)
+class FollowupTaskTransitionRequest:
+    task_id: str
+    claim_id: str
+    next_followup_at: datetime
+    transitioned_at: datetime
+    continuation_hint: str | None = None
+    stale_after_at: datetime | None = None
+
+
+@dataclass(slots=True, frozen=True)
+class BlockedTaskTransitionRequest:
+    task_id: str
+    claim_id: str
+    transitioned_at: datetime
+    blocked_reason: str
+    stale_after_at: datetime | None = None
+
+
+@dataclass(slots=True, frozen=True)
+class MemorySearchRequest:
+    query_text: str
+    memory_types: list[str] | None = None
+    source_kind: str | None = None
+    source_ref: str | None = None
+    limit: int = 10
+
+
+@dataclass(slots=True, frozen=True)
+class StaleTaskTransitionRequest:
+    task_id: str
+    target_status: TaskStatus
+    transitioned_at: datetime
+    blocked_reason: str | None = None
+    continuation_hint: str | None = None
+    next_followup_at: datetime | None = None
+    stale_after_at: datetime | None = None
+
+
+@dataclass(slots=True, frozen=True)
+class StaleClaimTransitionRequest:
+    claim_id: str
+    transitioned_at: datetime
+    task_status: TaskStatus = TaskStatus.STALLED
+    blocked_reason: str | None = None
+
+
 def _task_table_to_record(task: TaskTable) -> TaskRecord:
     return TaskRecord.model_validate(
         {
@@ -104,6 +168,43 @@ def _task_table_to_record(task: TaskTable) -> TaskRecord:
             "created_at": task.created_at,
             "updated_at": task.updated_at,
         }
+    )
+
+
+def _task_record_to_table(task: TaskRecord) -> TaskTable:
+    return TaskTable(
+        task_id=task.task_id,
+        title=task.title,
+        objective=task.objective,
+        normalized_objective=task.normalized_objective,
+        task_type=task.task_type,
+        status=task.status,
+        priority=task.priority,
+        confidence_score=task.confidence_score,
+        created_by_event_id=task.created_by_event_id,
+        origin_session_ids=task.origin_session_ids,
+        origin_thread_refs=task.origin_thread_refs,
+        assigned_runtime_lane=task.assigned_runtime_lane,
+        active_run_id=task.active_run_id,
+        parent_task_id=task.parent_task_id,
+        child_task_ids=task.child_task_ids,
+        latest_summary=task.latest_summary,
+        latest_summary_at=task.latest_summary_at,
+        success_criteria=task.success_criteria,
+        continuation_hint=task.continuation_hint,
+        blocked_reason=task.blocked_reason,
+        pending_approval_id=task.pending_approval_id,
+        artifact_refs=task.artifact_refs,
+        related_memory_refs=task.related_memory_refs,
+        last_operator_confirmation_at=task.last_operator_confirmation_at,
+        next_followup_at=task.next_followup_at,
+        stale_after_at=task.stale_after_at,
+        abandoned_at=task.abandoned_at,
+        completed_at=task.completed_at,
+        failed_at=task.failed_at,
+        metadata_json=task.metadata_json,
+        created_at=task.created_at,
+        updated_at=task.updated_at,
     )
 
 
@@ -315,6 +416,142 @@ def _provider_health_table_to_record(provider_health: ProviderHealthTable) -> Pr
     )
 
 
+def _memory_table_to_record(memory: MemoryTable) -> MemoryRecord:
+    confidence = float(memory.confidence) if isinstance(memory.confidence, Decimal) else memory.confidence
+    recency_weight = float(memory.recency_weight) if isinstance(memory.recency_weight, Decimal) else memory.recency_weight
+    return MemoryRecord.model_validate(
+        {
+            "memory_id": memory.memory_id,
+            "memory_type": memory.memory_type,
+            "content": memory.content,
+            "summary": memory.summary,
+            "embedding_ref": memory.embedding_ref,
+            "source_kind": memory.source_kind,
+            "source_ref": memory.source_ref,
+            "confidence": confidence,
+            "recency_weight": recency_weight,
+            "tags": memory.tags,
+            "metadata_json": memory.metadata_json,
+            "created_at": memory.created_at,
+            "updated_at": memory.updated_at,
+        }
+    )
+
+
+def _memory_record_to_table(memory: MemoryRecord) -> MemoryTable:
+    return MemoryTable(
+        memory_id=memory.memory_id,
+        memory_type=memory.memory_type,
+        content=memory.content,
+        summary=memory.summary,
+        embedding_ref=memory.embedding_ref,
+        source_kind=memory.source_kind,
+        source_ref=memory.source_ref,
+        confidence=memory.confidence,
+        recency_weight=memory.recency_weight,
+        tags=memory.tags,
+        metadata_json=memory.metadata_json,
+        created_at=memory.created_at,
+        updated_at=memory.updated_at,
+    )
+
+
+def _artifact_table_to_record(artifact: ArtifactTable) -> ArtifactRecord:
+    return ArtifactRecord.model_validate(
+        {
+            "artifact_id": artifact.artifact_id,
+            "artifact_type": artifact.artifact_type,
+            "task_id": artifact.task_id,
+            "run_id": artifact.run_id,
+            "storage_ref": artifact.storage_ref,
+            "description": artifact.description,
+            "content_hash": artifact.content_hash,
+            "visibility": artifact.visibility,
+            "retention_class": artifact.retention_class,
+            "expires_at": artifact.expires_at,
+            "archived_at": artifact.archived_at,
+            "purge_after_at": artifact.purge_after_at,
+            "metadata_json": artifact.metadata_json,
+            "created_at": artifact.created_at,
+            "updated_at": artifact.updated_at,
+        }
+    )
+
+
+def _artifact_record_to_table(artifact: ArtifactRecord) -> ArtifactTable:
+    return ArtifactTable(
+        artifact_id=artifact.artifact_id,
+        artifact_type=artifact.artifact_type,
+        task_id=artifact.task_id,
+        run_id=artifact.run_id,
+        storage_ref=artifact.storage_ref,
+        description=artifact.description,
+        content_hash=artifact.content_hash,
+        visibility=artifact.visibility,
+        retention_class=artifact.retention_class,
+        expires_at=artifact.expires_at,
+        archived_at=artifact.archived_at,
+        purge_after_at=artifact.purge_after_at,
+        metadata_json=artifact.metadata_json,
+        created_at=artifact.created_at,
+        updated_at=artifact.updated_at,
+    )
+
+
+def _subagent_table_to_record(subagent: SubagentTable) -> SubagentRecord:
+    return SubagentRecord.model_validate(
+        {
+            "subagent_id": subagent.subagent_id,
+            "parent_task_id": subagent.parent_task_id,
+            "child_task_id": subagent.child_task_id,
+            "role": subagent.role,
+            "status": subagent.status,
+            "model_policy_ref": subagent.model_policy_ref,
+            "delegated_objective": subagent.delegated_objective,
+            "expected_output_contract": subagent.expected_output_contract,
+            "started_at": subagent.started_at,
+            "heartbeat_at": subagent.heartbeat_at,
+            "completed_at": subagent.completed_at,
+            "failed_at": subagent.failed_at,
+            "timeout_at": subagent.timeout_at,
+            "result_artifact_refs": subagent.result_artifact_refs,
+            "error_summary": subagent.error_summary,
+            "metadata_json": subagent.metadata_json,
+            "created_at": subagent.created_at,
+            "updated_at": subagent.updated_at,
+        }
+    )
+
+
+def _subagent_record_to_table(subagent: SubagentRecord) -> SubagentTable:
+    return SubagentTable(
+        subagent_id=subagent.subagent_id,
+        parent_task_id=subagent.parent_task_id,
+        child_task_id=subagent.child_task_id,
+        role=subagent.role,
+        status=subagent.status,
+        model_policy_ref=subagent.model_policy_ref,
+        delegated_objective=subagent.delegated_objective,
+        expected_output_contract=subagent.expected_output_contract,
+        started_at=subagent.started_at,
+        heartbeat_at=subagent.heartbeat_at,
+        completed_at=subagent.completed_at,
+        failed_at=subagent.failed_at,
+        timeout_at=subagent.timeout_at,
+        result_artifact_refs=subagent.result_artifact_refs,
+        error_summary=subagent.error_summary,
+        metadata_json=subagent.metadata_json,
+        created_at=subagent.created_at,
+        updated_at=subagent.updated_at,
+    )
+
+
+def _tokenize_for_memory_search(value: str | None) -> set[str]:
+    if value is None:
+        return set()
+    return {token for token in re.findall(r"[a-z0-9_]+", value.lower()) if len(token) > 1}
+
+
 def active_claims_for_task_statement(task_id: str, *, as_of: datetime) -> Select[tuple[TaskClaimTable]]:
     return (
         select(TaskClaimTable)
@@ -418,6 +655,129 @@ class ClaimRepository:
         claim.claim_state = transitioned_claim.claim_state
         claim.updated_at = transitioned_claim.updated_at
         claim.lease_expires_at = request.transitioned_at
+
+        self._session.flush()
+        return TerminalTaskTransitionResult(task=transitioned_task, claim=transitioned_claim)
+
+    def transition_task_to_scheduled(self, request: FollowupTaskTransitionRequest) -> TerminalTaskTransitionResult:
+        task = self._session.execute(
+            select(TaskTable).where(TaskTable.task_id == request.task_id).with_for_update()
+        ).scalar_one()
+        claim = self._session.execute(
+            select(TaskClaimTable).where(TaskClaimTable.claim_id == request.claim_id).with_for_update()
+        ).scalar_one()
+
+        if claim.task_id != request.task_id:
+            raise ClaimLifecycleError(f"claim {request.claim_id} does not belong to task {request.task_id}")
+
+        task_record = _task_table_to_record(task)
+        transitioned_task = transition_task_status(
+            task_record,
+            TaskStatus.SCHEDULED,
+            transition_time=request.transitioned_at,
+            pending_approval_id=None,
+        ).model_copy(
+            update={
+                "next_followup_at": request.next_followup_at,
+                "stale_after_at": request.stale_after_at,
+                "continuation_hint": request.continuation_hint,
+            }
+        )
+        claim_record = _claim_table_to_record(claim)
+        transitioned_claim = transition_claim_state(
+            claim_record,
+            ClaimState.EXPIRED,
+            transition_time=request.transitioned_at,
+        )
+
+        task.status = transitioned_task.status
+        task.active_run_id = transitioned_task.active_run_id
+        task.pending_approval_id = transitioned_task.pending_approval_id
+        task.next_followup_at = transitioned_task.next_followup_at
+        task.stale_after_at = transitioned_task.stale_after_at
+        task.continuation_hint = transitioned_task.continuation_hint
+        task.updated_at = transitioned_task.updated_at
+
+        claim.claim_state = transitioned_claim.claim_state
+        claim.updated_at = transitioned_claim.updated_at
+        claim.lease_expires_at = request.transitioned_at
+
+        self._session.flush()
+        return TerminalTaskTransitionResult(task=transitioned_task, claim=transitioned_claim)
+
+    def transition_task_to_blocked(self, request: BlockedTaskTransitionRequest) -> TerminalTaskTransitionResult:
+        task = self._session.execute(
+            select(TaskTable).where(TaskTable.task_id == request.task_id).with_for_update()
+        ).scalar_one()
+        claim = self._session.execute(
+            select(TaskClaimTable).where(TaskClaimTable.claim_id == request.claim_id).with_for_update()
+        ).scalar_one()
+
+        if claim.task_id != request.task_id:
+            raise ClaimLifecycleError(f"claim {request.claim_id} does not belong to task {request.task_id}")
+
+        task_record = _task_table_to_record(task)
+        transitioned_task = transition_task_status(
+            task_record,
+            TaskStatus.BLOCKED,
+            transition_time=request.transitioned_at,
+            pending_approval_id=None,
+        ).model_copy(update={"blocked_reason": request.blocked_reason, "stale_after_at": request.stale_after_at})
+        claim_record = _claim_table_to_record(claim)
+        transitioned_claim = transition_claim_state(
+            claim_record,
+            ClaimState.EXPIRED,
+            transition_time=request.transitioned_at,
+        )
+
+        task.status = transitioned_task.status
+        task.active_run_id = transitioned_task.active_run_id
+        task.pending_approval_id = transitioned_task.pending_approval_id
+        task.blocked_reason = transitioned_task.blocked_reason
+        task.stale_after_at = transitioned_task.stale_after_at
+        task.updated_at = transitioned_task.updated_at
+
+        claim.claim_state = transitioned_claim.claim_state
+        claim.updated_at = transitioned_claim.updated_at
+        claim.lease_expires_at = request.transitioned_at
+
+        self._session.flush()
+        return TerminalTaskTransitionResult(task=transitioned_task, claim=transitioned_claim)
+
+    def expire_stale_claim(self, request: StaleClaimTransitionRequest) -> TerminalTaskTransitionResult:
+        claim = self._session.execute(
+            select(TaskClaimTable).where(TaskClaimTable.claim_id == request.claim_id).with_for_update()
+        ).scalar_one()
+        task = self._session.execute(
+            select(TaskTable).where(TaskTable.task_id == claim.task_id).with_for_update()
+        ).scalar_one()
+
+        claim_record = _claim_table_to_record(claim)
+        if claim_record.claim_state != ClaimState.ACTIVE:
+            raise ClaimLifecycleError(f"claim {request.claim_id} is not active")
+
+        transitioned_claim = transition_claim_state(
+            claim_record,
+            ClaimState.EXPIRED,
+            transition_time=request.transitioned_at,
+        )
+        task_record = _task_table_to_record(task)
+        transitioned_task = transition_task_status(
+            task_record,
+            request.task_status,
+            transition_time=request.transitioned_at,
+            pending_approval_id=task_record.pending_approval_id,
+        ).model_copy(update={"blocked_reason": request.blocked_reason})
+
+        claim.claim_state = transitioned_claim.claim_state
+        claim.updated_at = transitioned_claim.updated_at
+        claim.lease_expires_at = request.transitioned_at
+
+        task.status = transitioned_task.status
+        task.active_run_id = transitioned_task.active_run_id
+        task.pending_approval_id = transitioned_task.pending_approval_id
+        task.blocked_reason = transitioned_task.blocked_reason
+        task.updated_at = transitioned_task.updated_at
 
         self._session.flush()
         return TerminalTaskTransitionResult(task=transitioned_task, claim=transitioned_claim)
@@ -568,7 +928,12 @@ class ApprovalRepository:
             ApprovalStatus.CANCELLED,
             ApprovalStatus.EXPIRED,
         }:
-            if approval_record.decision == payload.decision and approval_record.resolution_payload_hash == payload.resolution_payload_hash:
+            if (
+                approval_record.decision == payload.decision
+                and approval_record.resolution_payload_hash == payload.resolution_payload_hash
+                and approval_record.resolved_by_user_id == payload.resolved_by_user_id
+                and approval_record.resolved_by_session_id == payload.resolved_by_session_id
+            ):
                 return approval_record
             raise ApprovalLifecycleError(f"approval {payload.approval_id} already resolved")
 
@@ -670,3 +1035,295 @@ class ProviderHealthRepository:
         if provider_health is None:
             return None
         return _provider_health_table_to_record(provider_health)
+
+
+class MemoryRepository:
+    def __init__(self, session: Session) -> None:
+        self._session = session
+
+    def upsert_memory(self, memory: MemoryRecord) -> MemoryRecord:
+        existing = self._session.get(MemoryTable, memory.memory_id)
+        if existing is None:
+            persisted = _memory_record_to_table(memory)
+            self._session.add(persisted)
+            self._session.flush()
+            return _memory_table_to_record(persisted)
+
+        existing.memory_type = memory.memory_type
+        existing.content = memory.content
+        existing.summary = memory.summary
+        existing.embedding_ref = memory.embedding_ref
+        existing.source_kind = memory.source_kind
+        existing.source_ref = memory.source_ref
+        existing.confidence = memory.confidence
+        existing.recency_weight = memory.recency_weight
+        existing.tags = memory.tags
+        existing.metadata_json = memory.metadata_json
+        existing.updated_at = memory.updated_at
+        self._session.flush()
+        return _memory_table_to_record(existing)
+
+    def search_memories(self, request: MemorySearchRequest) -> list[MemoryRecord]:
+        candidates = self._session.execute(select(MemoryTable)).scalars().all()
+        query_tokens = _tokenize_for_memory_search(request.query_text)
+        ranked: list[tuple[float, MemoryRecord]] = []
+
+        for candidate in candidates:
+            record = _memory_table_to_record(candidate)
+            if request.memory_types is not None and record.memory_type not in request.memory_types:
+                continue
+            if request.source_kind is not None and record.source_kind != request.source_kind:
+                continue
+            if request.source_ref is not None and record.source_ref != request.source_ref:
+                continue
+
+            searchable_text = " ".join(
+                part for part in [record.summary, record.content, " ".join(record.tags), record.source_ref] if part
+            )
+            overlap = len(query_tokens & _tokenize_for_memory_search(searchable_text))
+            if query_tokens and overlap == 0:
+                continue
+            score = float(overlap)
+            if record.confidence is not None:
+                score += record.confidence
+            if record.recency_weight is not None:
+                score += record.recency_weight
+            if score <= 0:
+                continue
+            ranked.append((score, record))
+
+        ranked.sort(key=lambda item: (-item[0], item[1].updated_at), reverse=False)
+        return [record for _, record in ranked[: request.limit]]
+
+
+class ArtifactRepository:
+    def __init__(self, session: Session) -> None:
+        self._session = session
+
+    def create_artifact(self, artifact: ArtifactRecord) -> ArtifactRecord:
+        persisted = _artifact_record_to_table(artifact)
+        self._session.add(persisted)
+        self._session.flush()
+        return _artifact_table_to_record(persisted)
+
+    def list_task_artifacts(self, task_id: str) -> list[ArtifactRecord]:
+        artifacts = self._session.execute(select(ArtifactTable).where(ArtifactTable.task_id == task_id)).scalars().all()
+        return [_artifact_table_to_record(artifact) for artifact in artifacts]
+
+
+class MaintenanceRepository:
+    def __init__(self, session: Session) -> None:
+        self._session = session
+
+    def list_due_scheduled_tasks(self, *, as_of: datetime) -> list[TaskRecord]:
+        tasks = self._session.execute(
+            select(TaskTable)
+            .where(TaskTable.status == TaskStatus.SCHEDULED)
+            .where(TaskTable.next_followup_at.is_not(None))
+            .where(TaskTable.next_followup_at <= as_of)
+        ).scalars().all()
+        return [_task_table_to_record(task) for task in tasks]
+
+    def list_stale_tasks(self, *, as_of: datetime, statuses: list[TaskStatus]) -> list[TaskRecord]:
+        tasks = self._session.execute(
+            select(TaskTable)
+            .where(TaskTable.status.in_(statuses))
+            .where(TaskTable.stale_after_at.is_not(None))
+            .where(TaskTable.stale_after_at <= as_of)
+        ).scalars().all()
+        return [_task_table_to_record(task) for task in tasks]
+
+    def list_tasks_by_status(self, *, statuses: list[TaskStatus]) -> list[TaskRecord]:
+        tasks = self._session.execute(select(TaskTable).where(TaskTable.status.in_(statuses))).scalars().all()
+        return [_task_table_to_record(task) for task in tasks]
+
+    def list_expired_active_claims(self, *, as_of: datetime) -> list[TaskClaimRecord]:
+        claims = self._session.execute(
+            select(TaskClaimTable)
+            .where(TaskClaimTable.claim_state == ClaimState.ACTIVE)
+            .where(TaskClaimTable.lease_expires_at <= as_of)
+        ).scalars().all()
+        return [_claim_table_to_record(claim) for claim in claims]
+
+    def transition_stale_task(self, request: StaleTaskTransitionRequest) -> TaskRecord:
+        task = self._session.execute(
+            select(TaskTable).where(TaskTable.task_id == request.task_id).with_for_update()
+        ).scalar_one()
+        task_record = _task_table_to_record(task)
+        transitioned_task = transition_task_status(
+            task_record,
+            request.target_status,
+            transition_time=request.transitioned_at,
+            pending_approval_id=task_record.pending_approval_id,
+        ).model_copy(
+            update={
+                "blocked_reason": request.blocked_reason if request.blocked_reason is not None else task_record.blocked_reason,
+                "continuation_hint": request.continuation_hint if request.continuation_hint is not None else task_record.continuation_hint,
+                "next_followup_at": request.next_followup_at,
+                "stale_after_at": request.stale_after_at,
+            }
+        )
+
+        task.status = transitioned_task.status
+        task.active_run_id = transitioned_task.active_run_id
+        task.pending_approval_id = transitioned_task.pending_approval_id
+        task.blocked_reason = transitioned_task.blocked_reason
+        task.continuation_hint = transitioned_task.continuation_hint
+        task.next_followup_at = transitioned_task.next_followup_at
+        task.stale_after_at = transitioned_task.stale_after_at
+        task.failed_at = transitioned_task.failed_at
+        task.abandoned_at = transitioned_task.abandoned_at
+        task.updated_at = transitioned_task.updated_at
+        self._session.flush()
+        return transitioned_task
+
+
+class SubagentRepository:
+    def __init__(self, session: Session) -> None:
+        self._session = session
+
+    def begin_delegation(
+        self,
+        *,
+        parent_task_id: str,
+        claim_id: str | None,
+        child_task: TaskRecord,
+        subagent: SubagentRecord,
+        now: datetime,
+        blocked_reason: str,
+        stale_after_at: datetime | None,
+    ) -> tuple[TaskRecord, TaskRecord, SubagentRecord]:
+        parent = self._session.execute(
+            select(TaskTable).where(TaskTable.task_id == parent_task_id).with_for_update()
+        ).scalar_one()
+        claim = None
+        if claim_id is not None:
+            claim = self._session.execute(
+                select(TaskClaimTable).where(TaskClaimTable.claim_id == claim_id).with_for_update()
+            ).scalar_one()
+            if claim.task_id != parent_task_id:
+                raise ClaimLifecycleError(f"claim {claim_id} does not belong to task {parent_task_id}")
+        parent_record = _task_table_to_record(parent)
+        transitioned_parent = transition_task_status(
+            parent_record,
+            TaskStatus.BLOCKED,
+            transition_time=now,
+            pending_approval_id=parent_record.pending_approval_id,
+        ).model_copy(
+            update={
+                "blocked_reason": blocked_reason,
+                "stale_after_at": stale_after_at,
+                "child_task_ids": [*parent_record.child_task_ids, child_task.task_id],
+            }
+        )
+
+        parent.status = transitioned_parent.status
+        parent.active_run_id = transitioned_parent.active_run_id
+        parent.blocked_reason = transitioned_parent.blocked_reason
+        parent.stale_after_at = transitioned_parent.stale_after_at
+        parent.child_task_ids = transitioned_parent.child_task_ids
+        parent.updated_at = transitioned_parent.updated_at
+
+        if claim is not None:
+            claim_record = _claim_table_to_record(claim)
+            transitioned_claim = transition_claim_state(
+                claim_record,
+                ClaimState.EXPIRED,
+                transition_time=now,
+            )
+            claim.claim_state = transitioned_claim.claim_state
+            claim.updated_at = transitioned_claim.updated_at
+            claim.lease_expires_at = now
+
+        self._session.add(_task_record_to_table(child_task))
+        persisted_subagent = _subagent_record_to_table(subagent)
+        self._session.add(persisted_subagent)
+        self._session.flush()
+        return transitioned_parent, child_task, _subagent_table_to_record(persisted_subagent)
+
+    def mark_running(self, subagent_id: str, *, now: datetime) -> SubagentRecord:
+        subagent = self._session.execute(
+            select(SubagentTable).where(SubagentTable.subagent_id == subagent_id).with_for_update()
+        ).scalar_one()
+        subagent_record = _subagent_table_to_record(subagent)
+        transitioned = transition_subagent_status(
+            subagent_record,
+            SubagentStatus.RUNNING,
+            transition_time=now,
+            heartbeat_at=now,
+        )
+
+        subagent.status = transitioned.status
+        subagent.started_at = transitioned.started_at
+        subagent.heartbeat_at = transitioned.heartbeat_at
+        subagent.updated_at = transitioned.updated_at
+        self._session.flush()
+        return transitioned
+
+    def apply_child_outcome(
+        self,
+        *,
+        subagent_id: str,
+        new_status: SubagentStatus,
+        now: datetime,
+        parent_status: TaskStatus,
+        parent_blocked_reason: str | None = None,
+        parent_continuation_hint: str | None = None,
+        parent_next_followup_at: datetime | None = None,
+        parent_stale_after_at: datetime | None = None,
+        result_artifact_refs: list[str] | None = None,
+        error_summary: str | None = None,
+    ) -> tuple[SubagentRecord, TaskRecord]:
+        subagent = self._session.execute(
+            select(SubagentTable).where(SubagentTable.subagent_id == subagent_id).with_for_update()
+        ).scalar_one()
+        parent = self._session.execute(
+            select(TaskTable).where(TaskTable.task_id == subagent.parent_task_id).with_for_update()
+        ).scalar_one()
+
+        subagent_record = _subagent_table_to_record(subagent)
+        transitioned_subagent = transition_subagent_status(
+            subagent_record,
+            new_status,
+            transition_time=now,
+            heartbeat_at=now,
+            result_artifact_refs=result_artifact_refs,
+            error_summary=error_summary,
+        )
+
+        parent_record = _task_table_to_record(parent)
+        transitioned_parent = transition_task_status(
+            parent_record,
+            parent_status,
+            transition_time=now,
+            pending_approval_id=parent_record.pending_approval_id,
+        ).model_copy(
+            update={
+                "blocked_reason": parent_blocked_reason,
+                "continuation_hint": parent_continuation_hint,
+                "next_followup_at": parent_next_followup_at,
+                "stale_after_at": parent_stale_after_at,
+            }
+        )
+
+        subagent.status = transitioned_subagent.status
+        subagent.started_at = transitioned_subagent.started_at
+        subagent.heartbeat_at = transitioned_subagent.heartbeat_at
+        subagent.completed_at = transitioned_subagent.completed_at
+        subagent.failed_at = transitioned_subagent.failed_at
+        subagent.timeout_at = transitioned_subagent.timeout_at
+        subagent.result_artifact_refs = transitioned_subagent.result_artifact_refs
+        subagent.error_summary = transitioned_subagent.error_summary
+        subagent.updated_at = transitioned_subagent.updated_at
+
+        parent.status = transitioned_parent.status
+        parent.active_run_id = transitioned_parent.active_run_id
+        parent.blocked_reason = transitioned_parent.blocked_reason
+        parent.continuation_hint = transitioned_parent.continuation_hint
+        parent.next_followup_at = transitioned_parent.next_followup_at
+        parent.stale_after_at = transitioned_parent.stale_after_at
+        parent.failed_at = transitioned_parent.failed_at
+        parent.updated_at = transitioned_parent.updated_at
+
+        self._session.flush()
+        return transitioned_subagent, transitioned_parent

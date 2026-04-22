@@ -3,8 +3,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any, Protocol
+from uuid import uuid4
 
 from argentum.domain.models import (
+    ActivityKind,
+    ActivityRecord,
     BudgetProfile,
     FallbackProfile,
     ModelRoutingPolicy,
@@ -31,10 +34,32 @@ class ModelSelection:
     timeout_profile: TimeoutProfile
     fallback_profile: FallbackProfile
     budget_profile: BudgetProfile
+    preferred_provider_id: str | None = None
+    fallback_from_provider_id: str | None = None
+    fallback_reason: str | None = None
+    selected_from_degraded_pool: bool = False
+
+
+@dataclass(slots=True, frozen=True)
+class RoutingActivityContext:
+    task_id: str | None = None
+    run_id: str | None = None
+    generated_tool_id: str | None = None
 
 
 class ModelGateway(Protocol):
-    def invoke(self, selection: ModelSelection, prompt: str, *, structured_output_schema: type[Any] | None = None) -> Any:
+    async def invoke(
+        self,
+        selection: ModelSelection,
+        prompt: str,
+        *,
+        structured_output_schema: type[Any] | None = None,
+    ) -> Any:
+        ...
+
+
+class ActivitySink(Protocol):
+    def record_activity(self, activity: ActivityRecord) -> ActivityRecord:
         ...
 
 
@@ -250,6 +275,8 @@ def _resolve_selection(
     if not candidates:
         return None
 
+    preferred_candidate = candidates[0]
+
     healthy_candidates = []
     degraded_candidates = []
     for candidate in candidates:
@@ -266,6 +293,15 @@ def _resolve_selection(
     if chosen_provider is None:
         return None
 
+    selected_from_degraded_pool = not healthy_candidates and bool(degraded_candidates)
+    fallback_from_provider_id = None
+    fallback_reason = None
+    if chosen_provider.provider_id != preferred_candidate.provider_id:
+        fallback_from_provider_id = preferred_candidate.provider_id
+        fallback_reason = _fallback_reason_for_provider(health_by_provider.get(preferred_candidate.provider_id), now)
+    elif selected_from_degraded_pool:
+        fallback_reason = "no_healthy_provider_available"
+
     timeout_profile = _find_timeout_profile(policy, operation_type)
     fallback_profile = _find_fallback_profile(policy, operation_type)
     budget_profile = _find_budget_profile(policy, operation_type)
@@ -277,7 +313,23 @@ def _resolve_selection(
         timeout_profile=timeout_profile,
         fallback_profile=fallback_profile,
         budget_profile=budget_profile,
+        preferred_provider_id=preferred_candidate.provider_id,
+        fallback_from_provider_id=fallback_from_provider_id,
+        fallback_reason=fallback_reason,
+        selected_from_degraded_pool=selected_from_degraded_pool,
     )
+
+
+def _fallback_reason_for_provider(provider_health: ProviderHealthRecord | None, now: datetime) -> str:
+    if provider_health is None:
+        return "policy_preference_shift"
+    if provider_health.health_status == ProviderHealthStatus.UNAVAILABLE:
+        return "provider_unavailable"
+    if provider_health.health_status == ProviderHealthStatus.DEGRADED and (
+        provider_health.degraded_until is None or provider_health.degraded_until > now
+    ):
+        return "provider_degraded"
+    return "provider_unhealthy"
 
 
 def _find_timeout_profile(policy: ModelRoutingPolicy, operation_type: OperationType) -> TimeoutProfile:
@@ -302,11 +354,18 @@ def _find_budget_profile(policy: ModelRoutingPolicy, operation_type: OperationTy
 
 
 class LLMOrchestrator:
-    def __init__(self, gateway: ModelGateway, policy: ModelRoutingPolicy) -> None:
+    def __init__(
+        self,
+        gateway: ModelGateway,
+        policy: ModelRoutingPolicy,
+        *,
+        activity_sink: ActivitySink | None = None,
+    ) -> None:
         self._gateway = gateway
         self._policy = policy
+        self._activity_sink = activity_sink
 
-    def invoke_operation(
+    async def invoke_operation(
         self,
         operation_type: OperationType,
         prompt: str,
@@ -315,6 +374,7 @@ class LLMOrchestrator:
         now: datetime | None = None,
         prefer_escalation: bool = False,
         structured_output_schema: type[Any] | None = None,
+        activity_context: RoutingActivityContext | None = None,
     ) -> tuple[ModelSelection, Any]:
         selection = select_route(
             self._policy,
@@ -324,5 +384,55 @@ class LLMOrchestrator:
             prefer_escalation=prefer_escalation,
             require_structured_output=structured_output_schema is not None,
         )
-        result = self._gateway.invoke(selection, prompt, structured_output_schema=structured_output_schema)
+        occurred_at = now or datetime.now(tz=UTC)
+        try:
+            result = await self._gateway.invoke(selection, prompt, structured_output_schema=structured_output_schema)
+        except Exception as exc:
+            self._record_routing_activity(selection, activity_context, occurred_at, gateway_outcome="error", error_message=str(exc))
+            raise
+        self._record_routing_activity(selection, activity_context, occurred_at, gateway_outcome="success")
         return selection, result
+
+    def _record_routing_activity(
+        self,
+        selection: ModelSelection,
+        activity_context: RoutingActivityContext | None,
+        occurred_at: datetime,
+        *,
+        gateway_outcome: str,
+        error_message: str | None = None,
+    ) -> None:
+        if self._activity_sink is None:
+            return
+
+        fallback_suffix = ""
+        if selection.fallback_from_provider_id is not None:
+            fallback_suffix = f" after fallback from {selection.fallback_from_provider_id}"
+        self._activity_sink.record_activity(
+            ActivityRecord(
+                activity_id=f"activity-{uuid4().hex}",
+                activity_kind=ActivityKind.PROVIDER_ROUTING,
+                task_id=activity_context.task_id if activity_context is not None else None,
+                run_id=activity_context.run_id if activity_context is not None else None,
+                generated_tool_id=activity_context.generated_tool_id if activity_context is not None else None,
+                provider_id=selection.provider_id,
+                model_name=selection.model_name,
+                summary=(
+                    f"Routed {selection.operation_type} to {selection.provider_id}/{selection.model_name}{fallback_suffix}"
+                ),
+                detail=error_message,
+                fallback_from_provider_id=selection.fallback_from_provider_id,
+                fallback_reason=selection.fallback_reason,
+                metadata_json={
+                    "budget_profile": selection.budget_profile.name,
+                    "fallback_profile": selection.fallback_profile.name,
+                    "gateway_outcome": gateway_outcome,
+                    "preferred_provider_id": selection.preferred_provider_id,
+                    "selected_from_degraded_pool": selection.selected_from_degraded_pool,
+                    "tier": selection.tier,
+                    "timeout_profile": selection.timeout_profile.name,
+                },
+                created_at=occurred_at,
+                updated_at=occurred_at,
+            )
+        )

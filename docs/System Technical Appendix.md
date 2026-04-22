@@ -575,6 +575,48 @@ ToolActivationScope
 - scope widening, rollback, disablement, and supersession should leave an auditable durable trail
 - regenerated tools should preserve lineage through supersession or rollback linkage rather than silently replacing prior capability
 
+## 11A. ActivityRecord Schema
+
+Observability and reporting require a durable activity history so routing decisions, autonomous actions, tool execution summaries, recovery actions, and generated-tool lifecycle changes remain queryable after the fact.
+
+```text
+ActivityRecord
+- activity_id: str
+- activity_kind: ActivityKind
+- task_id: str | null
+- run_id: str | null
+- approval_id: str | null
+- generated_tool_id: str | null
+- provider_id: str | null
+- model_name: str | null
+- summary: str
+- detail: str | null
+- fallback_from_provider_id: str | null
+- fallback_reason: str | null
+- token_count: int | null
+- metadata_json: dict
+- created_at: datetime
+- updated_at: datetime
+```
+
+### 11A.1 ActivityKind
+
+```text
+ActivityKind
+- task_activity
+- tool_execution
+- autonomous_action
+- provider_routing
+- generated_tool_lifecycle
+- recovery
+```
+
+### 11A.2 Activity rules
+
+- provider-routing activity should preserve enough detail to explain fallback or degraded-provider selection
+- generated-tool lifecycle activity should preserve tool identity and approval linkage when present
+- task or autonomous activity summaries should remain distinct from operator-facing message summaries
+
 ## 12. SubagentRecord Schema
 
 ```text

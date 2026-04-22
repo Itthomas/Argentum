@@ -121,6 +121,13 @@ Phase 4 should explicitly harden:
 - define observability surfaces for autonomous actions, tool use, and cost visibility
 - harden restart and recovery flows for interrupted high-consequence operations
 
+## Implemented Foundation
+
+- generated-tool durable lifecycle records now exist with staged activation scope tracking and lifecycle transitions
+- async runtime orchestration now flows through `TaskRuntime.run()` and `LLMOrchestrator.invoke_operation()`
+- durable activity records now preserve provider-routing visibility, generated-tool lifecycle history, and task activity summaries
+- Alembic-backed integration tests now cover approval-gated generated-tool activation and async runtime provider fallback visibility
+
 ## Failure Modes And Edge Cases
 
 - generated tools must never activate without explicit approval

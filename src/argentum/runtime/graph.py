@@ -4,12 +4,15 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 from typing import TypedDict
+from uuid import uuid4
 
 from langgraph.graph import END, START, StateGraph
 from pydantic import BaseModel, Field
 
 from argentum.domain.enums import ApprovalStatus, ClaimReleaseReason, ContinuationDecision, OperationType, RunClass, RunStatus, SubagentStatus, TaskStatus, TaskType
 from argentum.domain.models import (
+    ActivityKind,
+    ActivityRecord,
     ApprovalDecisionPayload,
     ApprovalRecord,
     ApprovalRequestDraft,
@@ -28,6 +31,7 @@ from argentum.domain.models import (
     ToolResultSummary,
 )
 from argentum.persistence.repositories import (
+    ActivityRepository,
     ApprovalRepository,
     ApprovalTaskTransitionRequest,
     ClaimRepository,
@@ -36,7 +40,7 @@ from argentum.persistence.repositories import (
 )
 
 from .context import ContextAssembler
-from .routing import LLMOrchestrator, ModelSelection
+from .routing import LLMOrchestrator, ModelSelection, RoutingActivityContext
 
 
 class TaskRuntimeError(RuntimeError):
@@ -98,6 +102,7 @@ class TaskRuntime:
         claim_repository: ClaimRepository,
         approval_repository: ApprovalRepository,
         routing_policy: ModelRoutingPolicy,
+        activity_repository: ActivityRepository | None = None,
         subagent_repository: SubagentRepository | None = None,
         max_turns: int = 3,
     ) -> None:
@@ -106,16 +111,17 @@ class TaskRuntime:
         self._claim_repository = claim_repository
         self._approval_repository = approval_repository
         self._routing_policy = routing_policy
+        self._activity_repository = activity_repository
         self._subagent_repository = subagent_repository
         self._max_turns = max_turns
 
-    def run(self, request: RuntimeExecutionRequest) -> RuntimeExecutionResult:
+    async def run(self, request: RuntimeExecutionRequest) -> RuntimeExecutionResult:
         graph = self._build_graph()
         graph_state: _RuntimeGraphState = {"request": request}
         turns = 0
 
         while True:
-            final_state = graph.invoke(graph_state)
+            final_state = await graph.ainvoke(graph_state)
             turns += 1
             decision = final_state["working_state"].continuation_decision
             if decision != ContinuationDecision.CONTINUE_NOW:
@@ -186,15 +192,16 @@ class TaskRuntime:
         )
         return {"working_state": working_state}
 
-    def _execute_turn(self, state: _RuntimeGraphState) -> _RuntimeGraphState:
+    async def _execute_turn(self, state: _RuntimeGraphState) -> _RuntimeGraphState:
         request = state["request"]
         working_state = state["working_state"]
-        selection, raw_result = self._orchestrator.invoke_operation(
+        selection, raw_result = await self._orchestrator.invoke_operation(
             OperationType.STANDARD_RUNTIME_TURN,
             working_state.context_packet.model_dump_json(indent=2),
             provider_health=request.provider_health or [],
             now=request.now,
             structured_output_schema=RuntimeTurnResult,
+            activity_context=RoutingActivityContext(task_id=request.task.task_id, run_id=request.run_id),
         )
         turn_result = raw_result if isinstance(raw_result, RuntimeTurnResult) else RuntimeTurnResult.model_validate(raw_result)
         updated_state = working_state.model_copy(
@@ -254,6 +261,13 @@ class TaskRuntime:
                 )
             )
             paused_state = working_state.model_copy(update={"current_status": RunStatus.WAITING_APPROVAL})
+            self._record_activity(
+                request=request,
+                activity_kind=ActivityKind.AUTONOMOUS_ACTION,
+                summary="Runtime paused for human approval",
+                detail=f"Created approval {approval_record.approval_id} for {approval_record.approval_type}",
+                approval_id=approval_record.approval_id,
+            )
             return {"working_state": paused_state, "approval_record": approval_record}
 
         if turn_result.continuation_decision == ContinuationDecision.PAUSE_WAITING_HUMAN:
@@ -273,6 +287,12 @@ class TaskRuntime:
                 )
             )
             scheduled_state = working_state.model_copy(update={"current_status": RunStatus.COMPLETED})
+            self._record_activity(
+                request=request,
+                activity_kind=ActivityKind.AUTONOMOUS_ACTION,
+                summary="Runtime scheduled a durable follow-up",
+                detail=turn_result.followup_request.continuation_hint,
+            )
             return {"working_state": scheduled_state, "approval_record": None, "subagent_record": None}
 
         if turn_result.continuation_decision == ContinuationDecision.DELEGATE:
@@ -320,6 +340,12 @@ class TaskRuntime:
                 stale_after_at=draft.stale_after_at,
             )
             delegating_state = working_state.model_copy(update={"current_status": RunStatus.DELEGATING})
+            self._record_activity(
+                request=request,
+                activity_kind=ActivityKind.AUTONOMOUS_ACTION,
+                summary="Runtime delegated work to a bounded child task",
+                detail=f"Created child task {draft.child_task_id} via subagent {created_subagent.subagent_id}",
+            )
             return {"working_state": delegating_state, "approval_record": None, "subagent_record": created_subagent}
 
         final_status = RunStatus.EXECUTING
@@ -340,6 +366,15 @@ class TaskRuntime:
                 f"continuation decision {turn_result.continuation_decision} requires durable handling before runtime completion"
             )
 
+        self._record_tool_activity(request, turn_result)
+        if turn_result.continuation_decision in {ContinuationDecision.COMPLETE, ContinuationDecision.FAIL, ContinuationDecision.CONTINUE_NOW}:
+            self._record_activity(
+                request=request,
+                activity_kind=ActivityKind.AUTONOMOUS_ACTION,
+                summary=f"Runtime recorded continuation {turn_result.continuation_decision}",
+                detail=(turn_result.reflection_result.summary if turn_result.reflection_result is not None else None),
+            )
+
         finalized_state = working_state.model_copy(update={"current_status": final_status})
         return {"working_state": finalized_state, "approval_record": None}
 
@@ -357,4 +392,38 @@ class TaskRuntime:
             terminal_status=terminal_status,
             release_reason=release_reason,
             transitioned_at=request.now,
+        )
+
+    def _record_tool_activity(self, request: RuntimeExecutionRequest, turn_result: RuntimeTurnResult) -> None:
+        for tool_result in turn_result.tool_results:
+            self._record_activity(
+                request=request,
+                activity_kind=ActivityKind.TOOL_EXECUTION,
+                summary=f"Tool {tool_result.tool_name} reported {tool_result.outcome}",
+                detail=tool_result.summary,
+            )
+
+    def _record_activity(
+        self,
+        *,
+        request: RuntimeExecutionRequest,
+        activity_kind: ActivityKind,
+        summary: str,
+        detail: str | None = None,
+        approval_id: str | None = None,
+    ) -> None:
+        if self._activity_repository is None:
+            return
+        self._activity_repository.record_activity(
+            ActivityRecord(
+                activity_id=f"activity-{uuid4().hex}",
+                activity_kind=activity_kind,
+                task_id=request.task.task_id,
+                run_id=request.run_id,
+                approval_id=approval_id,
+                summary=summary,
+                detail=detail,
+                created_at=request.now,
+                updated_at=request.now,
+            )
         )

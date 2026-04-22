@@ -6,6 +6,7 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from .enums import (
+    ActivityKind,
     ApprovalDecision,
     ApprovalStatus,
     ApprovalType,
@@ -20,6 +21,7 @@ from .enums import (
     EventProcessingStatus,
     EventType,
     FallbackAction,
+    GeneratedToolLifecycleState,
     MemorySourceKind,
     MemoryType,
     ModelTier,
@@ -34,6 +36,7 @@ from .enums import (
     SubagentStatus,
     TaskStatus,
     TaskType,
+    ToolActivationScope,
     TriggerMode,
 )
 
@@ -346,6 +349,103 @@ class ProviderHealthRecord(ArgentumModel):
     degraded_until: datetime | None = None
     notes: str | None = None
     updated_at: datetime
+
+
+class GeneratedToolRecord(ArgentumModel):
+    tool_id: str
+    tool_name: str
+    version: str
+    source_task_id: str
+    source_artifact_ref: str
+    requested_approval_id: str | None = None
+    lifecycle_state: GeneratedToolLifecycleState
+    activation_scope: ToolActivationScope = ToolActivationScope.NONE
+    capability_summary: str
+    schema_ref: str | None = None
+    supersedes_tool_id: str | None = None
+    superseded_by_tool_id: str | None = None
+    rollback_of_tool_id: str | None = None
+    quarantine_until: datetime | None = None
+    activated_at: datetime | None = None
+    disabled_at: datetime | None = None
+    disabled_reason: str | None = None
+    metadata_json: dict[str, Any] = Field(default_factory=dict)
+    created_at: datetime
+    updated_at: datetime
+
+    @model_validator(mode="after")
+    def validate_generated_tool_invariants(self) -> GeneratedToolRecord:
+        preactivation_states = {
+            GeneratedToolLifecycleState.PROPOSED,
+            GeneratedToolLifecycleState.VALIDATING,
+            GeneratedToolLifecycleState.VERIFIED,
+            GeneratedToolLifecycleState.APPROVAL_PENDING,
+        }
+        if self.lifecycle_state in preactivation_states and self.activation_scope != ToolActivationScope.NONE:
+            raise ValueError("pre-activation generated tools must not expose an activation scope")
+
+        if self.lifecycle_state == GeneratedToolLifecycleState.APPROVED and self.activation_scope not in {
+            ToolActivationScope.NONE,
+            ToolActivationScope.SHADOW,
+        }:
+            raise ValueError("approved tools may only remain unactivated or in shadow scope")
+
+        state_scope_requirements = {
+            GeneratedToolLifecycleState.QUARANTINED: ToolActivationScope.QUARANTINE,
+            GeneratedToolLifecycleState.LIMITED: ToolActivationScope.LIMITED,
+            GeneratedToolLifecycleState.GLOBAL: ToolActivationScope.GLOBAL,
+        }
+        required_scope = state_scope_requirements.get(self.lifecycle_state)
+        if required_scope is not None and self.activation_scope != required_scope:
+            raise ValueError(f"{self.lifecycle_state} tools must use activation scope {required_scope}")
+
+        if self.activation_scope != ToolActivationScope.NONE and self.requested_approval_id is None:
+            raise ValueError("activated or shadowed generated tools must retain approval linkage")
+
+        if self.lifecycle_state in {
+            GeneratedToolLifecycleState.QUARANTINED,
+            GeneratedToolLifecycleState.LIMITED,
+            GeneratedToolLifecycleState.GLOBAL,
+        } and self.activated_at is None:
+            raise ValueError("activated generated tools must record activated_at")
+
+        if self.lifecycle_state == GeneratedToolLifecycleState.DISABLED:
+            if self.disabled_at is None:
+                raise ValueError("disabled generated tools must record disabled_at")
+            if self.disabled_reason is None:
+                raise ValueError("disabled generated tools must record a disabled_reason")
+
+        if self.lifecycle_state == GeneratedToolLifecycleState.SUPERSEDED and self.superseded_by_tool_id is None:
+            raise ValueError("superseded generated tools must record their replacement")
+        return self
+
+
+class ActivityRecord(ArgentumModel):
+    activity_id: str
+    activity_kind: ActivityKind
+    task_id: str | None = None
+    run_id: str | None = None
+    approval_id: str | None = None
+    generated_tool_id: str | None = None
+    provider_id: str | None = None
+    model_name: str | None = None
+    summary: str
+    detail: str | None = None
+    fallback_from_provider_id: str | None = None
+    fallback_reason: str | None = None
+    token_count: int | None = None
+    metadata_json: dict[str, Any] = Field(default_factory=dict)
+    created_at: datetime
+    updated_at: datetime
+
+    @model_validator(mode="after")
+    def validate_activity_invariants(self) -> ActivityRecord:
+        if self.activity_kind == ActivityKind.PROVIDER_ROUTING:
+            if self.provider_id is None or self.model_name is None:
+                raise ValueError("provider routing activity requires provider and model identity")
+        if self.activity_kind == ActivityKind.GENERATED_TOOL_LIFECYCLE and self.generated_tool_id is None:
+            raise ValueError("generated-tool lifecycle activity requires a generated tool reference")
+        return self
 
 
 class MemoryRecord(ArgentumModel):

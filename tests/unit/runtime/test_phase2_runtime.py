@@ -106,14 +106,18 @@ class FakeGateway:
         self._responses = responses
         self.selections = []
 
-    def invoke(self, selection, prompt: str, *, structured_output_schema=None):
+    async def invoke(self, selection, prompt: str, *, structured_output_schema=None):
         self.selections.append(selection)
         return self._responses.pop(0)
 
 
 @pytest.fixture()
-def session() -> Session:
-    engine = create_sqlalchemy_engine("sqlite+pysqlite:///:memory:")
+def session(tmp_path_factory: pytest.TempPathFactory) -> Session:
+    database_path = tmp_path_factory.mktemp("phase2-runtime-db") / "runtime.sqlite3"
+    engine = create_sqlalchemy_engine(
+        f"sqlite+pysqlite:///{database_path.as_posix()}",
+        connect_args={"check_same_thread": False},
+    )
     Base.metadata.create_all(engine)
     factory = create_session_factory(engine)
     with factory() as current_session:
@@ -221,7 +225,8 @@ def test_select_route_avoids_unavailable_provider() -> None:
     assert selection.provider_id == "deepseek"
 
 
-def test_task_runtime_refuses_execution_without_authoritative_claim(session: Session, tmp_path: Path) -> None:
+@pytest.mark.anyio
+async def test_task_runtime_refuses_execution_without_authoritative_claim(session: Session, tmp_path: Path) -> None:
     runtime = build_runtime(
         tmp_path,
         session,
@@ -231,7 +236,7 @@ def test_task_runtime_refuses_execution_without_authoritative_claim(session: Ses
     )
 
     with pytest.raises(ClaimLifecycleError):
-        runtime.run(
+        await runtime.run(
             RuntimeExecutionRequest(
                 run_id="run-without-claim",
                 claim_id="missing-claim",
@@ -242,7 +247,8 @@ def test_task_runtime_refuses_execution_without_authoritative_claim(session: Ses
         )
 
 
-def test_task_runtime_pauses_for_approval_and_resumes_safely(session: Session, tmp_path: Path) -> None:
+@pytest.mark.anyio
+async def test_task_runtime_pauses_for_approval_and_resumes_safely(session: Session, tmp_path: Path) -> None:
     claim_repository = ClaimRepository(session)
     approval_repository = ApprovalRepository(session)
     claim_repository.acquire_claim(
@@ -278,7 +284,7 @@ def test_task_runtime_pauses_for_approval_and_resumes_safely(session: Session, t
         ),
     )
 
-    paused = first_runtime.run(
+    paused = await first_runtime.run(
         RuntimeExecutionRequest(
             run_id="run-1",
             claim_id="claim-1",
@@ -334,7 +340,7 @@ def test_task_runtime_pauses_for_approval_and_resumes_safely(session: Session, t
             ]
         ),
     )
-    completed = second_runtime.run(
+    completed = await second_runtime.run(
         RuntimeExecutionRequest(
             run_id="run-2",
             claim_id="claim-2",
@@ -391,7 +397,45 @@ def test_task_runtime_rejects_missing_non_terminal_continuation_payloads(
     )
 
     with pytest.raises(Exception, match=message):
-        runtime.run(
+        pass
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    ("continuation_decision", "message"),
+    [
+        (ContinuationDecision.SCHEDULE_FOLLOWUP, "requires a follow-up request payload"),
+        (ContinuationDecision.DELEGATE, "requires a subagent delegation payload"),
+        (ContinuationDecision.PAUSE_WAITING_HUMAN, "requires a durable approval request"),
+    ],
+)
+async def test_task_runtime_rejects_missing_non_terminal_continuation_payloads(
+    session: Session,
+    tmp_path: Path,
+    continuation_decision: ContinuationDecision,
+    message: str,
+) -> None:
+    claim_repository = ClaimRepository(session)
+    claim_repository.acquire_claim(
+        ClaimAcquisitionRequest(
+            task_id="task-1",
+            claim_id="claim-guardrail",
+            run_id="run-guardrail",
+            claimed_by="runtime-a",
+            claim_duration=timedelta(minutes=5),
+            claimed_at=timestamp(),
+        )
+    )
+    session.commit()
+
+    runtime = build_runtime(
+        tmp_path,
+        session,
+        FakeGateway([RuntimeTurnResult(continuation_decision=continuation_decision)]),
+    )
+
+    with pytest.raises(Exception, match=message):
+        await runtime.run(
             RuntimeExecutionRequest(
                 run_id="run-guardrail",
                 claim_id="claim-guardrail",

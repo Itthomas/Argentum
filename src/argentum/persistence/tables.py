@@ -7,6 +7,7 @@ from sqlalchemy import JSON, DateTime, Enum, ForeignKey, Integer, Numeric, Strin
 from sqlalchemy.orm import Mapped, mapped_column
 
 from argentum.domain.enums import (
+    ActivityKind,
     ApprovalDecision,
     ApprovalStatus,
     ApprovalType,
@@ -20,6 +21,7 @@ from argentum.domain.enums import (
     EventProcessingStatus,
     EventType,
     FallbackAction,
+    GeneratedToolLifecycleState,
     MemorySourceKind,
     MemoryType,
     ModelTier,
@@ -32,6 +34,7 @@ from argentum.domain.enums import (
     SubagentStatus,
     TaskStatus,
     TaskType,
+    ToolActivationScope,
     TriggerMode,
 )
 
@@ -212,6 +215,56 @@ class ProviderHealthTable(Base):
     consecutive_failures: Mapped[int] = mapped_column(Integer(), default=0, nullable=False)
     degraded_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     notes: Mapped[str | None] = mapped_column(Text())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class GeneratedToolTable(Base):
+    __tablename__ = "generated_tools"
+
+    tool_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    tool_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    version: Mapped[str] = mapped_column(String(64), nullable=False)
+    source_task_id: Mapped[str] = mapped_column(String(64), ForeignKey("tasks.task_id"), nullable=False)
+    source_artifact_ref: Mapped[str] = mapped_column(String(64), ForeignKey("artifacts.artifact_id"), nullable=False)
+    requested_approval_id: Mapped[str | None] = mapped_column(String(64), ForeignKey("approvals.approval_id"))
+    lifecycle_state: Mapped[GeneratedToolLifecycleState] = mapped_column(
+        Enum(GeneratedToolLifecycleState, native_enum=False), nullable=False
+    )
+    activation_scope: Mapped[ToolActivationScope] = mapped_column(
+        Enum(ToolActivationScope, native_enum=False), nullable=False
+    )
+    capability_summary: Mapped[str] = mapped_column(Text(), nullable=False)
+    schema_ref: Mapped[str | None] = mapped_column(String(255))
+    supersedes_tool_id: Mapped[str | None] = mapped_column(String(64), ForeignKey("generated_tools.tool_id"))
+    superseded_by_tool_id: Mapped[str | None] = mapped_column(String(64), ForeignKey("generated_tools.tool_id"))
+    rollback_of_tool_id: Mapped[str | None] = mapped_column(String(64), ForeignKey("generated_tools.tool_id"))
+    quarantine_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    activated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    disabled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    disabled_reason: Mapped[str | None] = mapped_column(Text())
+    metadata_json: Mapped[dict[str, Any]] = mapped_column(JSON(), default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class ActivityTable(Base):
+    __tablename__ = "activity_records"
+
+    activity_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    activity_kind: Mapped[ActivityKind] = mapped_column(Enum(ActivityKind, native_enum=False), nullable=False)
+    task_id: Mapped[str | None] = mapped_column(String(64), ForeignKey("tasks.task_id"))
+    run_id: Mapped[str | None] = mapped_column(String(64))
+    approval_id: Mapped[str | None] = mapped_column(String(64), ForeignKey("approvals.approval_id"))
+    generated_tool_id: Mapped[str | None] = mapped_column(String(64), ForeignKey("generated_tools.tool_id"))
+    provider_id: Mapped[str | None] = mapped_column(String(64))
+    model_name: Mapped[str | None] = mapped_column(String(255))
+    summary: Mapped[str] = mapped_column(Text(), nullable=False)
+    detail: Mapped[str | None] = mapped_column(Text())
+    fallback_from_provider_id: Mapped[str | None] = mapped_column(String(64))
+    fallback_reason: Mapped[str | None] = mapped_column(String(64))
+    token_count: Mapped[int | None] = mapped_column(Integer())
+    metadata_json: Mapped[dict[str, Any]] = mapped_column(JSON(), default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
 

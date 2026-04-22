@@ -24,6 +24,12 @@ Minimum visibility should include:
 - cost and token accounting
 - model-routing and provider-fallback visibility
 
+Current implementation foundation:
+
+- durable `activity_records` preserve provider-routing, generated-tool lifecycle, tool-execution, and autonomous-action history
+- durable `generated_tools` preserve staged activation and rollback lineage
+- `ObservabilityService` exposes task-activity, generated-tool lifecycle, and provider-routing reports over the durable records
+
 ## Reporting Surfaces
 
 The system should maintain distinct summary forms for:
@@ -32,6 +38,12 @@ The system should maintain distinct summary forms for:
 - task summary
 - operator-facing message summary
 - heartbeat or scheduler activity summary
+
+Current implementation foundation:
+
+- provider-routing reports combine current provider health with recent routing activity
+- generated-tool lifecycle reports combine durable tool state with lifecycle transition history
+- task-activity reports provide operator-readable slices of recent autonomous and tool activity
 
 ## Commit Semantics
 

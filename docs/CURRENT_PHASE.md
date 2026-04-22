@@ -10,16 +10,15 @@ Introduce governed self-extension and production hardening without violating the
 
 ## Immediate Tasks
 
-- Define tool proposal, validation, verification, approval, and activation boundaries.
-- Specify bounded initial activation scopes and explicit scope-widening rules.
-- Expand provider degradation tracking and fallback visibility.
-- Add observability surfaces for autonomous actions, tool use, and cost visibility.
+- Expand the generated-tool workflow from lifecycle persistence into full proposal, validation, and verification execution paths.
+- Extend staged activation handling with explicit scope-widening and rollback workflows.
+- Build richer operator-facing summaries and cost visibility on top of the activity history.
 - Harden restart and recovery flows for interrupted high-consequence operations.
 
 ## Current Blockers
 
-- No generated-tool lifecycle records or staged activation handling exist yet.
-- Provider fallback visibility and high-consequence observability are still minimal.
+- No blocking gaps currently prevent continued Phase 4 implementation.
+- Generated-tool activation now enforces a durable approved approval before entering activated states.
 
 ## Definition Of Done
 

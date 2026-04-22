@@ -84,14 +84,18 @@ class FakeGateway:
         self._responses = responses
         self.calls = 0
 
-    def invoke(self, selection, prompt: str, *, structured_output_schema=None):
+    async def invoke(self, selection, prompt: str, *, structured_output_schema=None):
         self.calls += 1
         return self._responses.pop(0)
 
 
 @pytest.fixture()
-def session() -> Session:
-    engine = create_sqlalchemy_engine("sqlite+pysqlite:///:memory:")
+def session(tmp_path_factory: pytest.TempPathFactory) -> Session:
+    database_path = tmp_path_factory.mktemp("phase3-runtime-db") / "runtime.sqlite3"
+    engine = create_sqlalchemy_engine(
+        f"sqlite+pysqlite:///{database_path.as_posix()}",
+        connect_args={"check_same_thread": False},
+    )
     Base.metadata.create_all(engine)
     factory = create_session_factory(engine)
     with factory() as current_session:
@@ -222,7 +226,8 @@ def test_heartbeat_service_applies_stale_recovery_policy(session: Session) -> No
     assert claim.claim_state.value == "expired"
 
 
-def test_task_runtime_loops_continue_now_until_terminal(session: Session, tmp_path: Path) -> None:
+@pytest.mark.anyio
+async def test_task_runtime_loops_continue_now_until_terminal(session: Session, tmp_path: Path) -> None:
     acquire_claim(session, claim_id="claim-continue", run_id="run-continue")
     gateway = FakeGateway(
         [
@@ -232,7 +237,7 @@ def test_task_runtime_loops_continue_now_until_terminal(session: Session, tmp_pa
     )
     runtime = build_runtime(tmp_path, session, gateway)
 
-    result = runtime.run(
+    result = await runtime.run(
         RuntimeExecutionRequest(
             run_id="run-continue",
             claim_id="claim-continue",
@@ -250,7 +255,8 @@ def test_task_runtime_loops_continue_now_until_terminal(session: Session, tmp_pa
     assert task.status == TaskStatus.COMPLETED
 
 
-def test_task_runtime_schedules_followup_durably(session: Session, tmp_path: Path) -> None:
+@pytest.mark.anyio
+async def test_task_runtime_schedules_followup_durably(session: Session, tmp_path: Path) -> None:
     acquire_claim(session, claim_id="claim-followup", run_id="run-followup")
     runtime = build_runtime(
         tmp_path,
@@ -269,7 +275,7 @@ def test_task_runtime_schedules_followup_durably(session: Session, tmp_path: Pat
         ),
     )
 
-    result = runtime.run(
+    result = await runtime.run(
         RuntimeExecutionRequest(
             run_id="run-followup",
             claim_id="claim-followup",
@@ -290,7 +296,8 @@ def test_task_runtime_schedules_followup_durably(session: Session, tmp_path: Pat
     assert claim.claim_state.value == "expired"
 
 
-def test_task_runtime_creates_durable_delegation(session: Session, tmp_path: Path) -> None:
+@pytest.mark.anyio
+async def test_task_runtime_creates_durable_delegation(session: Session, tmp_path: Path) -> None:
     acquire_claim(session, claim_id="claim-delegate", run_id="run-delegate")
     runtime = build_runtime(
         tmp_path,
@@ -314,7 +321,7 @@ def test_task_runtime_creates_durable_delegation(session: Session, tmp_path: Pat
         ),
     )
 
-    result = runtime.run(
+    result = await runtime.run(
         RuntimeExecutionRequest(
             run_id="run-delegate",
             claim_id="claim-delegate",

@@ -9,7 +9,7 @@ Phase 4: Self-Extension And Hardening
 Workspace scaffolded for phased implementation.
 Canonical architecture and appendix documents live under `docs/`.
 Python package namespace established as `argentum`.
-Phase 3 memory, scheduling, recovery, and delegation foundations are implemented in Python with Pydantic, SQLAlchemy, Alembic, LangGraph, and pytest coverage.
+Phase 4 generated-tool lifecycle, async runtime orchestration, and observability foundations are now implemented in Python with Pydantic, SQLAlchemy, Alembic, LangGraph, and pytest coverage.
 
 ## Completed
 
@@ -43,22 +43,28 @@ Phase 3 memory, scheduling, recovery, and delegation foundations are implemented
 - Extended the runtime to loop `continue_now` turns within a bounded run, persist scheduled follow-ups, and create durable delegated child-task and subagent records.
 - Added the Phase 3 Alembic migration for `memories`, `artifacts`, and `subagents` plus the stale-work lookup indexes required by recovery and heartbeat inspection.
 - Verified Phase 3 with focused and full pytest coverage plus a SQLite Alembic smoke upgrade through `20260421_0003`.
+- Converted the orchestration boundary to async for `TaskRuntime.run()` and `LLMOrchestrator.invoke_operation()`.
+- Added Phase 4 durable records, lifecycle handling, repositories, and migration support for `generated_tools` and `activity_records`.
+- Added observability reporting services for provider-routing visibility, generated-tool lifecycle history, and task activity history.
+- Added Alembic-backed integration tests for approval-gated generated-tool activation and async runtime fallback visibility.
+- Tightened generated-tool activation so quarantined, limited, and global states require a linked durable approval already resolved as `approved`.
+- Switched Alembic configuration to environment-backed URL resolution and removed the deprecated path-separator warning during migration-backed tests.
+- Deployed the curated bootstrap identity to the Pi and verified the protected runtime-visible hash path.
 
 ## In Progress
 
-- Preparing Phase 4 implementation for governed self-extension, provider-hardening, and deeper observability.
+- Continuing Phase 4 implementation on top of the new generated-tool and observability foundations.
 
 ## Upcoming
 
 - Define tool proposal, validation, verification, approval, and staged activation boundaries.
-- Expand provider degradation visibility and fallback policy behavior.
-- Add deeper observability for autonomous actions, tool use, and cost visibility.
+- Expand provider degradation handling beyond the current routing-activity visibility layer.
+- Add richer operator-facing summaries and cost visibility on top of the new activity history.
 - Harden restart and recovery handling for interrupted high-consequence operations.
 
 ## Known Issues
 
 - No CI, lint, or formatting tooling has been added yet.
-- The placeholder bootstrap identity content in `/srv/argentum/config/bootstrap/SOUL.md` still needs to be replaced before runtime enablement.
 
 ## Technical Debt
 
@@ -68,8 +74,7 @@ Phase 3 memory, scheduling, recovery, and delegation foundations are implemented
 ## Risks And Blockers
 
 - Phase 4 self-extension work increases risk if validation, approval, and staged activation boundaries are weak.
-- Provider fallback visibility still needs to become operator-legible for high-consequence operations.
-- The placeholder bootstrap identity content still blocks real runtime enablement even though the integrity path now exists.
+- Provider fallback visibility now exists through durable routing activity, but higher-level operator summaries and cost visibility still need to be expanded.
 
 ## Verification Status
 
@@ -88,5 +93,7 @@ Phase 3 memory, scheduling, recovery, and delegation foundations are implemented
 - Phase 2 migration smoke test: complete
 - Phase 3 memory, scheduling, and subagents: complete
 - Phase 3 migration smoke test: complete
+- Phase 4 generated-tool and observability foundations: complete
+- Phase 4 integration tests: passing
 - Automated tests: passing
-- Phase 4 implementation: not started
+- Phase 4 implementation: in progress

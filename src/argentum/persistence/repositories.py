@@ -4,26 +4,42 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 import re
+from uuid import uuid4
 
 from sqlalchemy import Select, select
 from sqlalchemy.orm import Session
 
-from argentum.domain.enums import ApprovalDecision, ApprovalStatus, ClaimReleaseReason, ClaimState, EventProcessingStatus, SubagentStatus, TaskStatus
+from argentum.domain.enums import (
+    ActivityKind,
+    ApprovalDecision,
+    ApprovalStatus,
+    ClaimReleaseReason,
+    ClaimState,
+    EventProcessingStatus,
+    GeneratedToolLifecycleState,
+    SubagentStatus,
+    TaskStatus,
+    ToolActivationScope,
+)
 from argentum.domain.ingress import EventIntakePolicy, apply_intake_decision, evaluate_event_intake
 from argentum.domain.lifecycle import (
     ApprovalLifecycleError,
     ClaimLifecycleError,
+    GeneratedToolLifecycleError,
     SubagentLifecycleError,
     transition_approval_status,
     transition_claim_state,
+    transition_generated_tool_state,
     transition_subagent_status,
     transition_task_status,
 )
 from argentum.domain.models import (
+    ActivityRecord,
     ApprovalDecisionPayload,
     ApprovalRecord,
     ArtifactRecord,
     EventRecord,
+    GeneratedToolRecord,
     MemoryRecord,
     ModelRoutingPolicy,
     ProviderHealthRecord,
@@ -33,9 +49,11 @@ from argentum.domain.models import (
 )
 
 from .tables import (
+    ActivityTable,
     ApprovalTable,
     ArtifactTable,
     EventTable,
+    GeneratedToolTable,
     MemoryTable,
     ModelRoutingPolicyTable,
     ProviderHealthTable,
@@ -413,6 +431,102 @@ def _provider_health_table_to_record(provider_health: ProviderHealthTable) -> Pr
             "notes": provider_health.notes,
             "updated_at": provider_health.updated_at,
         }
+    )
+
+
+def _generated_tool_table_to_record(generated_tool: GeneratedToolTable) -> GeneratedToolRecord:
+    return GeneratedToolRecord.model_validate(
+        {
+            "tool_id": generated_tool.tool_id,
+            "tool_name": generated_tool.tool_name,
+            "version": generated_tool.version,
+            "source_task_id": generated_tool.source_task_id,
+            "source_artifact_ref": generated_tool.source_artifact_ref,
+            "requested_approval_id": generated_tool.requested_approval_id,
+            "lifecycle_state": generated_tool.lifecycle_state,
+            "activation_scope": generated_tool.activation_scope,
+            "capability_summary": generated_tool.capability_summary,
+            "schema_ref": generated_tool.schema_ref,
+            "supersedes_tool_id": generated_tool.supersedes_tool_id,
+            "superseded_by_tool_id": generated_tool.superseded_by_tool_id,
+            "rollback_of_tool_id": generated_tool.rollback_of_tool_id,
+            "quarantine_until": generated_tool.quarantine_until,
+            "activated_at": generated_tool.activated_at,
+            "disabled_at": generated_tool.disabled_at,
+            "disabled_reason": generated_tool.disabled_reason,
+            "metadata_json": generated_tool.metadata_json,
+            "created_at": generated_tool.created_at,
+            "updated_at": generated_tool.updated_at,
+        }
+    )
+
+
+def _generated_tool_record_to_table(generated_tool: GeneratedToolRecord) -> GeneratedToolTable:
+    return GeneratedToolTable(
+        tool_id=generated_tool.tool_id,
+        tool_name=generated_tool.tool_name,
+        version=generated_tool.version,
+        source_task_id=generated_tool.source_task_id,
+        source_artifact_ref=generated_tool.source_artifact_ref,
+        requested_approval_id=generated_tool.requested_approval_id,
+        lifecycle_state=generated_tool.lifecycle_state,
+        activation_scope=generated_tool.activation_scope,
+        capability_summary=generated_tool.capability_summary,
+        schema_ref=generated_tool.schema_ref,
+        supersedes_tool_id=generated_tool.supersedes_tool_id,
+        superseded_by_tool_id=generated_tool.superseded_by_tool_id,
+        rollback_of_tool_id=generated_tool.rollback_of_tool_id,
+        quarantine_until=generated_tool.quarantine_until,
+        activated_at=generated_tool.activated_at,
+        disabled_at=generated_tool.disabled_at,
+        disabled_reason=generated_tool.disabled_reason,
+        metadata_json=generated_tool.metadata_json,
+        created_at=generated_tool.created_at,
+        updated_at=generated_tool.updated_at,
+    )
+
+
+def _activity_table_to_record(activity: ActivityTable) -> ActivityRecord:
+    return ActivityRecord.model_validate(
+        {
+            "activity_id": activity.activity_id,
+            "activity_kind": activity.activity_kind,
+            "task_id": activity.task_id,
+            "run_id": activity.run_id,
+            "approval_id": activity.approval_id,
+            "generated_tool_id": activity.generated_tool_id,
+            "provider_id": activity.provider_id,
+            "model_name": activity.model_name,
+            "summary": activity.summary,
+            "detail": activity.detail,
+            "fallback_from_provider_id": activity.fallback_from_provider_id,
+            "fallback_reason": activity.fallback_reason,
+            "token_count": activity.token_count,
+            "metadata_json": activity.metadata_json,
+            "created_at": activity.created_at,
+            "updated_at": activity.updated_at,
+        }
+    )
+
+
+def _activity_record_to_table(activity: ActivityRecord) -> ActivityTable:
+    return ActivityTable(
+        activity_id=activity.activity_id,
+        activity_kind=activity.activity_kind,
+        task_id=activity.task_id,
+        run_id=activity.run_id,
+        approval_id=activity.approval_id,
+        generated_tool_id=activity.generated_tool_id,
+        provider_id=activity.provider_id,
+        model_name=activity.model_name,
+        summary=activity.summary,
+        detail=activity.detail,
+        fallback_from_provider_id=activity.fallback_from_provider_id,
+        fallback_reason=activity.fallback_reason,
+        token_count=activity.token_count,
+        metadata_json=activity.metadata_json,
+        created_at=activity.created_at,
+        updated_at=activity.updated_at,
     )
 
 
@@ -1035,6 +1149,170 @@ class ProviderHealthRepository:
         if provider_health is None:
             return None
         return _provider_health_table_to_record(provider_health)
+
+    def list_provider_health(self) -> list[ProviderHealthRecord]:
+        provider_health = self._session.execute(select(ProviderHealthTable).order_by(ProviderHealthTable.provider_id)).scalars().all()
+        return [_provider_health_table_to_record(item) for item in provider_health]
+
+
+class GeneratedToolRepository:
+    def __init__(self, session: Session) -> None:
+        self._session = session
+
+    _ACTIVATED_STATES = frozenset(
+        {
+            GeneratedToolLifecycleState.QUARANTINED,
+            GeneratedToolLifecycleState.LIMITED,
+            GeneratedToolLifecycleState.GLOBAL,
+        }
+    )
+
+    def create_generated_tool(self, generated_tool: GeneratedToolRecord) -> GeneratedToolRecord:
+        persisted = _generated_tool_record_to_table(generated_tool)
+        self._session.add(persisted)
+        self._session.flush()
+        self._log_lifecycle_activity(_generated_tool_table_to_record(persisted), generated_tool.created_at, summary="Generated tool proposed")
+        return _generated_tool_table_to_record(persisted)
+
+    def get_generated_tool(self, tool_id: str) -> GeneratedToolRecord | None:
+        generated_tool = self._session.get(GeneratedToolTable, tool_id)
+        if generated_tool is None:
+            return None
+        return _generated_tool_table_to_record(generated_tool)
+
+    def list_generated_tools(
+        self,
+        *,
+        lifecycle_states: list[GeneratedToolLifecycleState | str] | None = None,
+        limit: int = 50,
+    ) -> list[GeneratedToolRecord]:
+        statement = select(GeneratedToolTable).order_by(GeneratedToolTable.updated_at.desc())
+        if lifecycle_states:
+            statement = statement.where(GeneratedToolTable.lifecycle_state.in_(lifecycle_states))
+        tools = self._session.execute(statement.limit(limit)).scalars().all()
+        return [_generated_tool_table_to_record(tool) for tool in tools]
+
+    def transition_generated_tool(
+        self,
+        *,
+        tool_id: str,
+        new_state: GeneratedToolLifecycleState,
+        transitioned_at: datetime,
+        activation_scope: ToolActivationScope | None = None,
+        requested_approval_id: str | None = None,
+        quarantine_until: datetime | None = None,
+        activated_at: datetime | None = None,
+        disabled_reason: str | None = None,
+        superseded_by_tool_id: str | None = None,
+        rollback_of_tool_id: str | None = None,
+    ) -> GeneratedToolRecord:
+        generated_tool = self._session.execute(
+            select(GeneratedToolTable).where(GeneratedToolTable.tool_id == tool_id).with_for_update()
+        ).scalar_one()
+        generated_tool_record = _generated_tool_table_to_record(generated_tool)
+        self._require_approved_activation_request(
+            generated_tool_record=generated_tool_record,
+            new_state=new_state,
+            requested_approval_id=requested_approval_id,
+        )
+        transitioned = transition_generated_tool_state(
+            generated_tool_record,
+            new_state,
+            transition_time=transitioned_at,
+            activation_scope=activation_scope,
+            requested_approval_id=requested_approval_id,
+            quarantine_until=quarantine_until,
+            activated_at=activated_at,
+            disabled_reason=disabled_reason,
+            superseded_by_tool_id=superseded_by_tool_id,
+            rollback_of_tool_id=rollback_of_tool_id,
+        )
+
+        generated_tool.requested_approval_id = transitioned.requested_approval_id
+        generated_tool.lifecycle_state = transitioned.lifecycle_state
+        generated_tool.activation_scope = transitioned.activation_scope
+        generated_tool.quarantine_until = transitioned.quarantine_until
+        generated_tool.activated_at = transitioned.activated_at
+        generated_tool.disabled_at = transitioned.disabled_at
+        generated_tool.disabled_reason = transitioned.disabled_reason
+        generated_tool.superseded_by_tool_id = transitioned.superseded_by_tool_id
+        generated_tool.rollback_of_tool_id = transitioned.rollback_of_tool_id
+        generated_tool.updated_at = transitioned.updated_at
+        self._session.flush()
+        self._log_lifecycle_activity(transitioned, transitioned_at, summary=f"Generated tool transitioned to {new_state}")
+        return transitioned
+
+    def _require_approved_activation_request(
+        self,
+        *,
+        generated_tool_record: GeneratedToolRecord,
+        new_state: GeneratedToolLifecycleState,
+        requested_approval_id: str | None,
+    ) -> None:
+        if new_state not in self._ACTIVATED_STATES:
+            return
+
+        approval_id = requested_approval_id or generated_tool_record.requested_approval_id
+        if approval_id is None:
+            raise GeneratedToolLifecycleError("activated generated tools require an approved approval")
+
+        approval = self._session.get(ApprovalTable, approval_id)
+        if approval is None or approval.status != ApprovalStatus.APPROVED:
+            raise GeneratedToolLifecycleError("activated generated tools require an approved approval")
+
+    def _log_lifecycle_activity(self, generated_tool: GeneratedToolRecord, now: datetime, *, summary: str) -> None:
+        self._session.add(
+            _activity_record_to_table(
+                ActivityRecord(
+                    activity_id=f"activity-{uuid4().hex}",
+                    activity_kind=ActivityKind.GENERATED_TOOL_LIFECYCLE,
+                    task_id=generated_tool.source_task_id,
+                    approval_id=generated_tool.requested_approval_id,
+                    generated_tool_id=generated_tool.tool_id,
+                    summary=summary,
+                    detail=(
+                        f"state={generated_tool.lifecycle_state} scope={generated_tool.activation_scope} version={generated_tool.version}"
+                    ),
+                    metadata_json={
+                        "activation_scope": generated_tool.activation_scope,
+                        "lifecycle_state": generated_tool.lifecycle_state,
+                        "rollback_of_tool_id": generated_tool.rollback_of_tool_id,
+                        "superseded_by_tool_id": generated_tool.superseded_by_tool_id,
+                    },
+                    created_at=now,
+                    updated_at=now,
+                )
+            )
+        )
+
+
+class ActivityRepository:
+    def __init__(self, session: Session) -> None:
+        self._session = session
+
+    def record_activity(self, activity: ActivityRecord) -> ActivityRecord:
+        persisted = _activity_record_to_table(activity)
+        self._session.add(persisted)
+        self._session.flush()
+        return _activity_table_to_record(persisted)
+
+    def list_activity(
+        self,
+        *,
+        activity_kinds: list[ActivityKind | str] | None = None,
+        task_id: str | None = None,
+        generated_tool_id: str | None = None,
+        limit: int = 50,
+    ) -> list[ActivityRecord]:
+        statement = select(ActivityTable).order_by(ActivityTable.created_at.desc(), ActivityTable.activity_id.desc())
+        if activity_kinds:
+            statement = statement.where(ActivityTable.activity_kind.in_(activity_kinds))
+        if task_id is not None:
+            statement = statement.where(ActivityTable.task_id == task_id)
+        if generated_tool_id is not None:
+            statement = statement.where(ActivityTable.generated_tool_id == generated_tool_id)
+        activities = self._session.execute(statement.limit(limit)).scalars().all()
+        return [_activity_table_to_record(activity) for activity in activities]
 
 
 class MemoryRepository:

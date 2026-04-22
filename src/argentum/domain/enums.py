@@ -208,6 +208,37 @@ class ProviderHealthStatus(StrEnum):
     UNAVAILABLE = "unavailable"
 
 
+class GeneratedToolLifecycleState(StrEnum):
+    PROPOSED = "proposed"
+    VALIDATING = "validating"
+    VERIFIED = "verified"
+    APPROVAL_PENDING = "approval_pending"
+    APPROVED = "approved"
+    QUARANTINED = "quarantined"
+    LIMITED = "limited"
+    GLOBAL = "global"
+    DISABLED = "disabled"
+    SUPERSEDED = "superseded"
+    ARCHIVED = "archived"
+
+
+class ToolActivationScope(StrEnum):
+    NONE = "none"
+    QUARANTINE = "quarantine"
+    SHADOW = "shadow"
+    LIMITED = "limited"
+    GLOBAL = "global"
+
+
+class ActivityKind(StrEnum):
+    TASK_ACTIVITY = "task_activity"
+    TOOL_EXECUTION = "tool_execution"
+    AUTONOMOUS_ACTION = "autonomous_action"
+    PROVIDER_ROUTING = "provider_routing"
+    GENERATED_TOOL_LIFECYCLE = "generated_tool_lifecycle"
+    RECOVERY = "recovery"
+
+
 class MemoryType(StrEnum):
     USER_PROFILE = "user_profile"
     OPERATOR_PREFERENCE = "operator_preference"

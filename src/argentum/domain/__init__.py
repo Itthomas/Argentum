@@ -3,6 +3,7 @@ from __future__ import annotations
 """Domain models and lifecycle helpers for Argentum."""
 
 from .enums import (
+    ActivityKind,
     ApprovalDecision,
     ApprovalStatus,
     ApprovalType,
@@ -17,6 +18,7 @@ from .enums import (
     EventProcessingStatus,
     EventType,
     FallbackAction,
+    GeneratedToolLifecycleState,
     MemorySourceKind,
     MemoryType,
     ModelTier,
@@ -31,16 +33,19 @@ from .enums import (
     SubagentStatus,
     TaskStatus,
     TaskType,
+    ToolActivationScope,
     TriggerMode,
 )
 from .lifecycle import (
     ApprovalLifecycleError,
     ClaimLifecycleError,
+    GeneratedToolLifecycleError,
     SubagentLifecycleError,
     TaskLifecycleError,
     ensure_exclusive_active_claims,
     transition_approval_status,
     transition_claim_state,
+    transition_generated_tool_state,
     transition_subagent_status,
     transition_task_status,
 )
@@ -51,6 +56,7 @@ from .ingress import (
     evaluate_event_intake,
 )
 from .models import (
+    ActivityRecord,
     ApprovalDecisionPayload,
     ApprovalRecord,
     ApprovalRequestDraft,
@@ -63,6 +69,7 @@ from .models import (
     EventRecord,
     FallbackProfile,
     FollowupRequest,
+    GeneratedToolRecord,
     MemoryRecord,
     MemoryDigest,
     ModelRoutingPolicy,
@@ -88,6 +95,8 @@ from .models import (
 
 __all__ = [
     "ChannelType",
+    "ActivityKind",
+    "ActivityRecord",
     "ApprovalDecision",
     "ApprovalDecisionPayload",
     "ApprovalLifecycleError",
@@ -117,6 +126,9 @@ __all__ = [
     "FallbackAction",
     "FallbackProfile",
     "FollowupRequest",
+    "GeneratedToolLifecycleError",
+    "GeneratedToolLifecycleState",
+    "GeneratedToolRecord",
     "MemoryRecord",
     "MemoryDigest",
     "MemorySourceKind",
@@ -153,6 +165,7 @@ __all__ = [
     "TaskStatus",
     "TaskType",
     "TimeoutProfile",
+    "ToolActivationScope",
     "ToolResultSummary",
     "TriggerMode",
     "apply_intake_decision",
@@ -160,6 +173,7 @@ __all__ = [
     "evaluate_event_intake",
     "transition_approval_status",
     "transition_claim_state",
+    "transition_generated_tool_state",
     "transition_subagent_status",
     "transition_task_status",
 ]

@@ -2,8 +2,17 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from .enums import ApprovalDecision, ApprovalStatus, ClaimReleaseReason, ClaimState, SubagentStatus, TaskStatus
-from .models import ApprovalRecord, SubagentRecord, TaskClaimRecord, TaskRecord
+from .enums import (
+    ApprovalDecision,
+    ApprovalStatus,
+    ClaimReleaseReason,
+    ClaimState,
+    GeneratedToolLifecycleState,
+    SubagentStatus,
+    TaskStatus,
+    ToolActivationScope,
+)
+from .models import ApprovalRecord, GeneratedToolRecord, SubagentRecord, TaskClaimRecord, TaskRecord
 
 TASK_TRANSITIONS: dict[TaskStatus, frozenset[TaskStatus]] = {
     TaskStatus.PROPOSED: frozenset({TaskStatus.ACTIVE, TaskStatus.SCHEDULED, TaskStatus.ABANDONED}),
@@ -88,6 +97,62 @@ SUBAGENT_TRANSITIONS: dict[SubagentStatus, frozenset[SubagentStatus]] = {
     SubagentStatus.CANCELLED: frozenset(),
 }
 
+GENERATED_TOOL_TRANSITIONS: dict[GeneratedToolLifecycleState, frozenset[GeneratedToolLifecycleState]] = {
+    GeneratedToolLifecycleState.PROPOSED: frozenset({GeneratedToolLifecycleState.VALIDATING, GeneratedToolLifecycleState.ARCHIVED}),
+    GeneratedToolLifecycleState.VALIDATING: frozenset(
+        {GeneratedToolLifecycleState.VERIFIED, GeneratedToolLifecycleState.DISABLED, GeneratedToolLifecycleState.ARCHIVED}
+    ),
+    GeneratedToolLifecycleState.VERIFIED: frozenset(
+        {
+            GeneratedToolLifecycleState.APPROVAL_PENDING,
+            GeneratedToolLifecycleState.DISABLED,
+            GeneratedToolLifecycleState.ARCHIVED,
+        }
+    ),
+    GeneratedToolLifecycleState.APPROVAL_PENDING: frozenset(
+        {GeneratedToolLifecycleState.APPROVED, GeneratedToolLifecycleState.DISABLED, GeneratedToolLifecycleState.ARCHIVED}
+    ),
+    GeneratedToolLifecycleState.APPROVED: frozenset(
+        {
+            GeneratedToolLifecycleState.QUARANTINED,
+            GeneratedToolLifecycleState.LIMITED,
+            GeneratedToolLifecycleState.GLOBAL,
+            GeneratedToolLifecycleState.DISABLED,
+            GeneratedToolLifecycleState.SUPERSEDED,
+            GeneratedToolLifecycleState.ARCHIVED,
+        }
+    ),
+    GeneratedToolLifecycleState.QUARANTINED: frozenset(
+        {
+            GeneratedToolLifecycleState.LIMITED,
+            GeneratedToolLifecycleState.GLOBAL,
+            GeneratedToolLifecycleState.DISABLED,
+            GeneratedToolLifecycleState.SUPERSEDED,
+            GeneratedToolLifecycleState.ARCHIVED,
+        }
+    ),
+    GeneratedToolLifecycleState.LIMITED: frozenset(
+        {
+            GeneratedToolLifecycleState.GLOBAL,
+            GeneratedToolLifecycleState.DISABLED,
+            GeneratedToolLifecycleState.SUPERSEDED,
+            GeneratedToolLifecycleState.ARCHIVED,
+        }
+    ),
+    GeneratedToolLifecycleState.GLOBAL: frozenset(
+        {
+            GeneratedToolLifecycleState.DISABLED,
+            GeneratedToolLifecycleState.SUPERSEDED,
+            GeneratedToolLifecycleState.ARCHIVED,
+        }
+    ),
+    GeneratedToolLifecycleState.DISABLED: frozenset(
+        {GeneratedToolLifecycleState.APPROVED, GeneratedToolLifecycleState.ARCHIVED, GeneratedToolLifecycleState.SUPERSEDED}
+    ),
+    GeneratedToolLifecycleState.SUPERSEDED: frozenset({GeneratedToolLifecycleState.ARCHIVED}),
+    GeneratedToolLifecycleState.ARCHIVED: frozenset(),
+}
+
 TERMINAL_TASK_STATUSES = frozenset(
     {TaskStatus.COMPLETED, TaskStatus.FAILED, TaskStatus.FAILED_TIMEOUT, TaskStatus.EXPIRED, TaskStatus.ABANDONED}
 )
@@ -110,6 +175,10 @@ class ApprovalLifecycleError(ValueError):
 
 class SubagentLifecycleError(ValueError):
     """Raised when a subagent transition violates the canonical state machine."""
+
+
+class GeneratedToolLifecycleError(ValueError):
+    """Raised when a generated-tool transition violates the canonical state machine."""
 
 
 def _now_or(value: datetime | None) -> datetime:
@@ -267,6 +336,76 @@ def transition_subagent_status(
         updates["error_summary"] = error_summary
 
     return subagent.model_copy(update=updates)
+
+
+def transition_generated_tool_state(
+    generated_tool: GeneratedToolRecord,
+    new_state: GeneratedToolLifecycleState,
+    *,
+    transition_time: datetime | None = None,
+    activation_scope: ToolActivationScope | None = None,
+    requested_approval_id: str | None = None,
+    quarantine_until: datetime | None = None,
+    activated_at: datetime | None = None,
+    disabled_reason: str | None = None,
+    superseded_by_tool_id: str | None = None,
+    rollback_of_tool_id: str | None = None,
+) -> GeneratedToolRecord:
+    if new_state not in GENERATED_TOOL_TRANSITIONS[generated_tool.lifecycle_state]:
+        raise GeneratedToolLifecycleError(
+            f"illegal generated-tool transition: {generated_tool.lifecycle_state} -> {new_state}"
+        )
+
+    when = _now_or(transition_time)
+    resolved_scope = activation_scope or _default_activation_scope(new_state, generated_tool.activation_scope)
+    updates: dict[str, object | None] = {
+        "lifecycle_state": new_state,
+        "activation_scope": resolved_scope,
+        "requested_approval_id": requested_approval_id or generated_tool.requested_approval_id,
+        "quarantine_until": quarantine_until if quarantine_until is not None else generated_tool.quarantine_until,
+        "rollback_of_tool_id": rollback_of_tool_id if rollback_of_tool_id is not None else generated_tool.rollback_of_tool_id,
+        "updated_at": when,
+    }
+
+    if new_state in {
+        GeneratedToolLifecycleState.QUARANTINED,
+        GeneratedToolLifecycleState.LIMITED,
+        GeneratedToolLifecycleState.GLOBAL,
+    }:
+        updates["activated_at"] = activated_at or generated_tool.activated_at or when
+
+    if new_state == GeneratedToolLifecycleState.DISABLED:
+        if disabled_reason is None and generated_tool.disabled_reason is None:
+            raise GeneratedToolLifecycleError("disabled generated tools require a disabled_reason")
+        updates["disabled_at"] = when
+        updates["disabled_reason"] = disabled_reason or generated_tool.disabled_reason
+
+    if new_state == GeneratedToolLifecycleState.SUPERSEDED:
+        if superseded_by_tool_id is None:
+            raise GeneratedToolLifecycleError("superseded generated tools require a replacement tool id")
+        updates["superseded_by_tool_id"] = superseded_by_tool_id
+
+    return generated_tool.model_copy(update=updates)
+
+
+def _default_activation_scope(
+    lifecycle_state: GeneratedToolLifecycleState,
+    current_scope: ToolActivationScope,
+) -> ToolActivationScope:
+    scope_by_state = {
+        GeneratedToolLifecycleState.PROPOSED: ToolActivationScope.NONE,
+        GeneratedToolLifecycleState.VALIDATING: ToolActivationScope.NONE,
+        GeneratedToolLifecycleState.VERIFIED: ToolActivationScope.NONE,
+        GeneratedToolLifecycleState.APPROVAL_PENDING: ToolActivationScope.NONE,
+        GeneratedToolLifecycleState.APPROVED: current_scope if current_scope == ToolActivationScope.SHADOW else ToolActivationScope.NONE,
+        GeneratedToolLifecycleState.QUARANTINED: ToolActivationScope.QUARANTINE,
+        GeneratedToolLifecycleState.LIMITED: ToolActivationScope.LIMITED,
+        GeneratedToolLifecycleState.GLOBAL: ToolActivationScope.GLOBAL,
+        GeneratedToolLifecycleState.DISABLED: current_scope,
+        GeneratedToolLifecycleState.SUPERSEDED: current_scope,
+        GeneratedToolLifecycleState.ARCHIVED: current_scope,
+    }
+    return scope_by_state[lifecycle_state]
 
 
 def ensure_exclusive_active_claims(

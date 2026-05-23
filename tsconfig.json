@@ -1,0 +1,14 @@
+{
+  "files": [],
+  "references": [
+    { "path": "./packages/contracts" },
+    { "path": "./packages/channel_cli" },
+    { "path": "./packages/gateway" },
+    { "path": "./packages/agentic_core" },
+    { "path": "./packages/llm_provider" },
+    { "path": "./packages/tooling" },
+    { "path": "./packages/environment" },
+    { "path": "./packages/telemetry" },
+    { "path": "./apps/runtime" }
+  ]
+}

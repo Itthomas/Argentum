@@ -1,0 +1,13 @@
+node_modules/
+dist/
+coverage/
+*.tsbuildinfo
+
+runtime/artifacts/*
+!runtime/artifacts/.gitkeep
+runtime/logs/*
+!runtime/logs/.gitkeep
+runtime/working/*
+!runtime/working/.gitkeep
+
+config/runtime.local.json

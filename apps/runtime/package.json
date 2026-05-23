@@ -1,0 +1,14 @@
+{
+  "name": "@argentum/runtime",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "dependencies": {
+    "@argentum/environment": "workspace:*"
+  },
+  "scripts": {
+    "build": "tsc -b",
+    "lint": "eslint src",
+    "test": "vitest run"
+  }
+}

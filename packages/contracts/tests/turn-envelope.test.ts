@@ -266,6 +266,63 @@ describe("parseTurnEnvelope", () => {
       { path: "debug", code: "unknown_key" },
     ]);
   });
+
+  it("accepts TurnBudget with optional max_tokens_per_step present and valid", () => {
+    const turnEnvelope = makeValidTurnEnvelope();
+    turnEnvelope.budget = {
+      ...turnEnvelope.budget,
+      max_tokens_per_step: 4096,
+    };
+
+    const parsed = parseTurnEnvelope(turnEnvelope);
+
+    expect(parsed.budget.max_tokens_per_step).toBe(4096);
+  });
+
+  it("accepts TurnBudget without max_tokens_per_step (optional field)", () => {
+    const turnEnvelope = makeValidTurnEnvelope();
+    // budget does not include max_tokens_per_step
+
+    const parsed = parseTurnEnvelope(turnEnvelope);
+
+    expect(parsed.budget).not.toHaveProperty("max_tokens_per_step");
+  });
+
+  it("rejects TurnBudget with max_tokens_per_step = 0 (must be >= 1)", () => {
+    const turnEnvelope = makeValidTurnEnvelope() as Record<string, unknown>;
+    turnEnvelope.budget = {
+      ...makeValidTurnEnvelope().budget,
+      max_tokens_per_step: 0,
+    };
+
+    expectTurnEnvelopeIssues(turnEnvelope, [
+      { path: "budget.max_tokens_per_step", code: "invalid_value" },
+    ]);
+  });
+
+  it("rejects TurnBudget with max_tokens_per_step = -1 (must be >= 1)", () => {
+    const turnEnvelope = makeValidTurnEnvelope() as Record<string, unknown>;
+    turnEnvelope.budget = {
+      ...makeValidTurnEnvelope().budget,
+      max_tokens_per_step: -1,
+    };
+
+    expectTurnEnvelopeIssues(turnEnvelope, [
+      { path: "budget.max_tokens_per_step", code: "invalid_value" },
+    ]);
+  });
+
+  it("rejects TurnBudget with max_tokens_per_step as float", () => {
+    const turnEnvelope = makeValidTurnEnvelope() as Record<string, unknown>;
+    turnEnvelope.budget = {
+      ...makeValidTurnEnvelope().budget,
+      max_tokens_per_step: 4096.5,
+    };
+
+    expectTurnEnvelopeIssues(turnEnvelope, [
+      { path: "budget.max_tokens_per_step", code: "invalid_integer" },
+    ]);
+  });
 });
 
 function expectContentRefIssues(

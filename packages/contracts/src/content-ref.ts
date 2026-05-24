@@ -1,3 +1,10 @@
+import {
+  expectRecord,
+  isPlainObject,
+  joinPath,
+  pushUnknownKeys,
+} from "./validation-helpers.js";
+
 export type ContentRefKind = "text" | "json" | "trace" | "file" | "blob";
 
 export type ContentRefStorageArea = "bedrock" | "working" | "artifacts" | "logs";
@@ -203,52 +210,6 @@ function parseStringValue(
   return value;
 }
 
-function expectRecord(
-  value: unknown,
-  path: string,
-  addIssue: (issue: ContentRefValidationIssue) => void,
-): UnknownRecord | undefined {
-  if (!isPlainObject(value)) {
-    addIssue({
-      path: path || "$",
-      code: "invalid_type",
-      message: `Expected "${path || "$"}" to be an object.`,
-    });
-    return undefined;
-  }
-
-  return value;
-}
-
-function pushUnknownKeys(
-  record: UnknownRecord,
-  allowedKeys: Set<string>,
-  path: string,
-  addIssue: (issue: ContentRefValidationIssue) => void,
-): void {
-  for (const key of Object.keys(record)) {
-    if (allowedKeys.has(key)) {
-      continue;
-    }
-
-    const fieldPath = joinPath(path, key);
-    addIssue({
-      path: fieldPath,
-      code: "unknown_key",
-      message: `Unknown field "${fieldPath}".`,
-    });
-  }
-}
-
-function isPlainObject(value: unknown): value is UnknownRecord {
-  if (typeof value !== "object" || value === null) {
-    return false;
-  }
-
-  const prototype = Object.getPrototypeOf(value);
-  return prototype === Object.prototype || prototype === null;
-}
-
 function isRelativeLocator(value: string): boolean {
   if (value.length === 0) {
     return true;
@@ -267,8 +228,4 @@ function isRelativeLocator(value: string): boolean {
   }
 
   return true;
-}
-
-function joinPath(path: string, key: string): string {
-  return path ? `${path}.${key}` : key;
 }

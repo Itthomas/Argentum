@@ -34,5 +34,5 @@
 
 ## Review Log
 
-- Adversarial review findings:
+- Adversarial review findings (by severity: CRITICAL, HIGH, MEDIUM, LOW):
 - Refinements applied:

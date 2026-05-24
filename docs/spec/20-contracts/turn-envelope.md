@@ -30,6 +30,7 @@
 | `max_repair_attempts` | integer | yes | Maximum canonical repair attempts allowed in the turn |
 | `max_wall_clock_ms` | integer | yes | Maximum wall-clock runtime for the turn |
 | `repair_attempts_used` | integer | yes | Number of canonical repair attempts consumed so far |
+| `max_tokens_per_step` | integer | no | Maximum number of tokens allowed per inference step |
 
 ## Rules
 

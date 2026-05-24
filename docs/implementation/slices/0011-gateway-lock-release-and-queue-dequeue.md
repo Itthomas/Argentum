@@ -2,13 +2,14 @@
 
 ## Status
 
-- State: planned
+- State: validated
 - Approval: approved
 - Approved by: adversarial review follow-up
-- Approval date: 2026-05-22
+- Approval date: 2026-05-23
 - Phase: 2
 - Owner: gateway
-- Execution readiness: look-ahead only; start after slice 0010 stabilizes the opaque active-turn authority lifecycle and slice 0009 fixes the shared gateway-local turn-start handoff contract that this slice must return for dequeued ingress.
+- Execution readiness: validated. The release-and-dequeue seam delegates all authority lifecycle work to the slice 0010 seam. The `finalizing_append_surface.append()` call is inside the SQLite transaction so append failures trigger full rollback. Only one canonical `queue.dequeued` write path exists (the caller-facing `finalizing_append_surface`), eliminating the internal `appendFinalizingReplayEvent` duplicate.
+- Validation note: local validation passed with `pnpm --filter @argentum/gateway test` (all 40 tests green, exit 0) and `pnpm typecheck` (exit 0) on 2026-05-23. **H1/H2/M2 remediation (2026-05-23):** `finalizing_append_surface.append()` moved inside the SQLite transaction so append failures trigger full rollback (H1); JSDoc added to `GatewayFinalizingEventAppendSurface.append` documenting throw-on-failure contract (M2); internal `appendFinalizingReplayEvent` removed — only the single deterministic `finalizing_append_surface` writes `queue.dequeued`, with a non-duplication assertion in the replay test (H2). **Post-remediation adversarial review: APPROVED** with no CRITICAL or HIGH findings.
 - Implementation precondition note: no additional bootstrap decision is required because the local SQLite persistence choice is already recorded in [docs/implementation/bootstrap-decisions.md](../bootstrap-decisions.md), but this slice must not begin while the gateway-local release context available during `finalizing` or the shared turn-start handoff owned by slice 0009 is still changing shape.
 
 ## Scope
@@ -34,15 +35,20 @@
   - The entrypoint must not accept a bare `session_id`, bare `turn_id`, caller-synthesized queue reference, or any release request detached from the gateway-local active-turn authority established upstream.
   - If the active turn is successfully released and no queued ingress exists, the entrypoint atomically clears active-turn ownership for the session and returns one explicit released-without-next result. No `queue.*` event is emitted when queue state does not change.
   - If queued ingress exists, the entrypoint atomically releases the current active turn and dequeues exactly the oldest queued ingress for the same session. Newer queued ingress and newly arriving ingress must not bypass that oldest queued item.
+  - This slice must reuse the active-turn authority lifecycle semantics and validation seam owned by slice 0010 for authority consumption and stale-authority invalidation. The release entrypoint must not introduce a second independent authority-issuance or authority-validation implementation.
+  - This slice owns the persisted active-turn claim lifecycle transition after turn creation: release paths must atomically advance or clear the active-turn claim marker so stale turn-start authority from earlier turns cannot be reused after release.
   - A successful dequeue returns one gateway-local turn-start handoff in the exact shared shape owned by slice 0009, carrying the dequeued canonical ingress now promoted onto the next valid turn-start path together with one matching opaque exclusive turn-creation authority. This slice must not invent a dequeue-only handoff shape that would require a second adapter seam before turn creation.
   - A successful dequeue emits exactly one canonical `queue.dequeued` `StreamEvent` with `scope = session`, allocator-supplied `event_id`, monotonic session-scoped `sequence`, UTC `timestamp`, `visibility`, and the minimum payload required by [docs/spec/20-contracts/stream-event-payloads.md](../../spec/20-contracts/stream-event-payloads.md): `session_id`, `ingress_id`, and `queue_length`.
-  - When a `queue.dequeued` event is emitted for a released turn, the event is produced during `finalizing` after successful release and dequeue but before the caller-owned `turn.completed` or `turn.aborted` event is emitted for that same turn. This slice still does not emit `turn.*` events itself.
+  - When a `queue.dequeued` event is emitted for a released turn, the event is produced during `finalizing` after successful release and dequeue but before the caller-owned `turn.completed` or `turn.aborted` event is emitted for that same turn.
+  - The dequeue and terminal-turn event publication path must use one deterministic append surface so replay preserves this ordering without relying on best-effort scheduling across independent emitters. This slice still does not emit `turn.*` events itself, and append failure on that surface must be surfaced to the caller as an explicit failure result or thrown error rather than being swallowed after commit.
   - Stale, duplicate, missing, or mismatched release authority must not clear the active turn, dequeue ingress, or emit `queue.dequeued`.
   - If persistence fails after release work begins, the slice must not leave behind caller-visible partial state such as an unlocked session with the dequeued ingress removed but no dequeue handoff, or a removed queue head with no matching `queue.dequeued` event output.
   - The slice remains limited to gateway lock release and queued-ingress handoff. It does not execute the core loop, emit `turn.*` events, archive turns, persist telemetry, construct `TurnEnvelope`, or decide fresh external ingress admission outcomes.
 - Inputs crossing the boundary:
   - One caller-owned gateway-local active-turn release authority for the currently active session and turn.
   - One caller-owned gateway-local finalizing release context carrying the minimum active-turn identity and terminal branch information needed to release the session during `finalizing` without reopening core-loop state ownership or waiting for archival completion.
+  - One gateway-local authority lifecycle validation seam exported by slice 0010 so this slice consumes and invalidates authority using the same gateway-owned semantics rather than duplicating them.
+  - One shared gateway-local finalizing event-append seam used by this slice and by the caller-owned terminal turn emission path so dequeue and terminal events can be durably appended in one deterministic ordering surface with explicit success or failure signaling.
   - One gateway-local persistence interface owned by this slice that can atomically release active-turn ownership, inspect the ordered queued-ingress backlog, remove exactly the oldest queued ingress when present, and materialize the shared turn-start handoff for the next turn.
   - One gateway-local queue-event metadata allocator that yields canonical top-level `StreamEvent` fields for a session-scoped `queue.dequeued` event.
 - Outputs crossing the boundary:
@@ -57,31 +63,43 @@
 - Implementation prerequisites:
   - Start this slice only after slice 0010 stabilizes the opaque authority lifecycle strongly enough that a downstream release operation can prove it is releasing the currently active turn rather than a caller-synthesized identity tuple.
   - Keep slice 0009 as the owner of the shared gateway-local turn-start handoff contract plus turn creation, and keep the core-loop package as the owner of turn-state transitions and terminal outcome selection. Do not collapse finalization, lock release, queue draining, and turn creation into one entrypoint.
+  - Keep slice 0010 as the owner of active-turn authority lifecycle semantics and validation. This slice may consume and invalidate that authority at release time but must not fork authority issuance or validation behavior.
   - Inherit the non-vacuous `@argentum/gateway` package test gate already established by slice 0006. Do not treat this slice as executable while `pnpm --filter @argentum/gateway test` can still pass without the release, FIFO, and partial-failure tests named below.
 
 - First contracts or interfaces to create:
   - Gateway-local finalizing release context type that is available before `finalizing` completes and carries only the minimum turn identity and terminal-branch data needed for release.
   - Gateway-local release-request input type that composes the active-turn release authority with the caller-owned finalizing release context.
   - Gateway-local release-result union that returns either one released-without-next result, one shared turn-start handoff plus `queue.dequeued` event, or one explicit no-release outcome.
+  - Gateway-local release-authority validator/consumer dependency that is implemented by the slice 0010 seam and imported here without redefinition.
+  - Gateway-local finalizing event-append interface that provides one deterministic append surface for `queue.dequeued` and caller-owned terminal turn events with explicit failure signaling. Append failures are thrown to the caller rather than being swallowed after commit.
   - Gateway-local persistence interface for atomic active-turn release and oldest-queued-ingress dequeue against SQLite-backed storage.
   - Gateway-local queue-event metadata allocator contract for canonical `queue.dequeued` top-level event fields.
 - Minimal implementation steps:
   - Add a focused release-and-dequeue module under `packages/gateway`.
   - Consume only the gateway-local active-turn authority and caller-owned finalizing release context rather than any caller-reconstructed session or queue identifiers.
+  - Invoke the slice 0010 authority lifecycle seam for release-time authority validation and stale-authority invalidation instead of reimplementing authority checks in this module.
   - Use the SQLite-backed gateway persistence seam to atomically release the current active turn and either return an explicit no-next result or remove exactly the oldest queued ingress for the same session.
+  - Atomically advance or clear persisted active-turn claim lifecycle state during release so stale authority from completed turns is invalidated by this slice instead of by slice 0009 turn creation.
   - Materialize the shared gateway-local turn-start handoff owned by slice 0009 for the oldest queued ingress when queue state changes so downstream turn creation can proceed without reopening a same-session race window or inventing an adapter seam.
   - Emit the canonical session-scoped `queue.dequeued` event only when a queued ingress is actually removed, using allocator-supplied event metadata and the required minimum payload fields, and return it on the same finalizing-time path before the caller emits the terminal turn event for the released turn.
+  - Route dequeue and terminal-turn event publication through one deterministic append surface so durable replay preserves `queue.dequeued` before terminal turn emission for the same release path.
   - Keep turn completion events, archival scheduling, telemetry persistence, and next-turn `TurnEnvelope` creation outside this entrypoint so the slice stays a pure gateway lock-release and dequeue seam.
 - Required tests:
   - Gateway boundary tests proving only a matching live active-turn release authority can release the current turn.
   - Gateway boundary tests proving stale, duplicate, missing, or mismatched release authority leaves active-turn state and queue state unchanged.
+  - Gateway boundary tests proving release paths advance or clear persisted active-turn claim lifecycle markers so stale turn-start authorities from prior turns cannot be reused post-release.
   - Gateway boundary tests proving successful release with an empty queue returns an explicit released-without-next result and emits no `queue.*` event.
   - Gateway boundary tests proving successful release with queued backlog dequeues exactly the oldest queued ingress and preserves FIFO order for the remaining backlog.
   - Gateway boundary tests proving the returned turn-start handoff is in the exact shared shape consumed by slice 0009, is bound to the same session as the released turn, and carries the dequeued ingress identity needed for downstream turn creation without leaking persistence internals.
   - Gateway boundary tests proving a successful dequeue emits one canonical `queue.dequeued` event that satisfies the public `StreamEvent` validator and includes `session_id`, `ingress_id`, and `queue_length` payload minimums.
   - Gateway boundary tests proving allocator-supplied `event_id`, `sequence`, `timestamp`, and `visibility` values are used for `queue.dequeued` rather than hidden gateway sequencing state.
+  - Gateway boundary tests proving slice 0011 consumes slice 0010 authority lifecycle validation semantics directly and does not accept release using a bypass path that 0010 would reject.
   - Gateway integration tests proving the returned turn-start handoff can be consumed directly by slice 0009 without an intermediate adapter seam.
   - Gateway integration tests proving `queue.dequeued` is observable before the caller-owned `turn.completed` or `turn.aborted` event for the same finalizing path.
+  - Gateway integration tests proving durable telemetry replay preserves `queue.dequeued` before the terminal turn event on the same finalizing path.
+  - Gateway integration tests proving `queue.dequeued` and the caller-owned terminal turn event for one finalizing path are appended through the same finalizing append seam instance or transaction scope.
+  - Gateway boundary tests with fault injection proving allocator or event-append failure between dequeue mutation and event publication cannot leave a committed queue-state change while still returning a successful release result.
+  - Gateway boundary tests proving append-surface failure is surfaced instead of being swallowed after commit, and that no successful dequeue result is reported without the matching publication contract.
   - Gateway boundary tests proving release plus dequeue does not expose a caller-visible unlocked same-session gap that would let newer ingress bypass the oldest queued ingress.
   - Gateway boundary tests proving persistence failure during release or dequeue does not orphan the queue head, drop the active-turn release result, or return a turn-start handoff without the matching state change.
   - Gateway boundary tests proving the slice returns no `TurnEnvelope`, emits no `turn.*` events, performs no archival work, and makes no fresh admission decision.
@@ -92,7 +110,7 @@
 
 ## Execution Strategy
 
-- Autopilot suitability: conditional. The owner and validation target are clear, but this is a persistence-backed release-and-promotion seam and should not run on autopilot until slices 0010 and 0009 stabilize the shared turn-start handoff plus downstream authority lifecycle, and the gateway package has the focused FIFO, event-ordering, and partial-failure tests named above.
+- Autopilot suitability: conditional. The owner and validation target are clear and implementation-ready, but this persistence-backed release seam should only run with the focused authority-reuse, deterministic-append, replay-order, and fault-injection tests above in place.
 - Parallel subagent opportunities:
   - Read-only extraction of lock-release ordering invariants from [docs/spec/10-architecture/runtime-lifecycle.md](../../spec/10-architecture/runtime-lifecycle.md), [docs/spec/30-core-loop/core-loop-state-machine.md](../../spec/30-core-loop/core-loop-state-machine.md), and [docs/spec/40-modules/gateway/queueing-and-locking.md](../../spec/40-modules/gateway/queueing-and-locking.md).
   - Read-only extraction of `queue.dequeued` event minimums from [docs/spec/20-contracts/stream-event-payloads.md](../../spec/20-contracts/stream-event-payloads.md) and [docs/spec/10-architecture/eventing-model.md](../../spec/10-architecture/eventing-model.md).
@@ -124,9 +142,23 @@
   - Planning synthesis found that a release-only slice would reopen a same-session race window unless the dequeue handoff or reservation remains explicit and gateway-local.
   - Follow-up slice review found that the card left the dequeue output incompatible with slice 0009 and described release inputs as arriving after `finalizing`, which would weaken the spec-required release timing.
   - Follow-up adversarial subagent review after the shared handoff and finalizing-time release refinements found no remaining blocking planning defect in this card.
+  - Follow-up critical review found one remaining boundary ambiguity with slice 0010 authority semantics, a cross-scope event-ordering determinism gap, and missing fault-injection and replay-order validation coverage.
+  - Final adversarial approval review found one remaining planning blocker: the shared finalizing append-surface contract was implied but not explicitly declared in boundary inputs and first-contracts sections.
+  - Post-implementation adversarial review found one remaining critical implementation blocker: release-side authority-consumption behavior still drifts from strict delegation to the slice 0010 seam under current wiring.
+  - Post-implementation adversarial review found one remaining high implementation blocker: append-surface failure semantics were not explicit enough to prevent swallowed publication failures after commit.
 - Refinements applied:
   - Kept the slice centered on one gateway-owned persistence boundary: releasing the active turn and handing off the oldest queued ingress.
   - Replaced the dequeue-only handoff with the exact shared turn-start handoff owned by slice 0009 so queued ingress can re-enter turn creation without an extra adapter seam.
   - Replaced the post-finalizing terminal-summary input with one finalizing-time release context so lock release remains explicitly inside `finalizing` before archival work begins.
   - Added explicit event-ordering requirements and tests so `queue.dequeued` remains observable before the caller-owned terminal turn event for the released turn.
+  - Made finalizing append-surface failures throw to the caller instead of being silently ignored after commit, satisfying the acceptance-criteria requirement for explicit failure signaling.
+  - Verified release-time authority consumption is delegated to the slice 0010 seam only, with no duplicated validation or stale-authority handling path in the release module.
   - Kept turn finalization, archival, and next-turn `TurnEnvelope` creation out of scope so the boundary remains narrow and testable.
+  - Absorbed deferred persisted active-turn claim lifecycle ownership from slice 0009 so turn creation remains a pure turn-start handoff-to-artifact seam without lock-state mutation side effects.
+  - Added an explicit must-reuse requirement for slice 0010 authority lifecycle validation and invalidation semantics so release-time authority handling cannot fork into a second implementation path.
+  - Added a deterministic append-surface requirement and replay-order test so `queue.dequeued` ordering against terminal turn events is durable instead of scheduler-dependent.
+  - Tightened the append-seam contract and tests so publication failures must surface explicitly instead of being silently ignored after commit.
+  - Added fault-injection coverage for allocator or event-append failure between dequeue mutation and event publication.
+  - Added one explicit shared finalizing append-surface boundary contract and one matching seam-level integration test so ordering guarantees are owned by a named interface rather than by implicit wiring.
+  - Implemented `packages/gateway/src/release-and-dequeue.ts` plus focused gateway tests for release/dequeue, FIFO dequeue ordering, stale-authority rejection, retry safety, append-failure surfacing, and fault-injection paths.
+  - Completed implementation with `pnpm --filter @argentum/gateway test` and `pnpm typecheck` passing.

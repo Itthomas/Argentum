@@ -17,6 +17,23 @@ export {
 	isGatewayExclusiveTurnCreationAuthority,
 	} from "./active-turn-claim.js";
 export type {
+	CreateSqliteGatewayReleaseAndDequeueStoreInput,
+	GatewayDequeuedEventPayload,
+	GatewayDequeuedStreamEvent,
+	GatewayFinalizingEventAppendSurface,
+	GatewayFinalizingReleaseContext,
+	GatewayNoReleaseResult,
+	GatewayReleaseAndDequeueResult,
+	GatewayReleaseAndDequeueStore,
+	GatewayReleasedWithNextResult,
+	GatewayReleasedWithoutNextResult,
+	ReleaseActiveTurnAndDequeueInput,
+} from "./release-and-dequeue.js";
+export {
+	createSqliteGatewayReleaseAndDequeueStore,
+	releaseActiveTurnAndDequeue,
+} from "./release-and-dequeue.js";
+export type {
 	GatewayAcceptedAdmissionResult,
 	GatewayAdmissionResult,
 	GatewayAdmissionSnapshot,
@@ -48,3 +65,23 @@ export {
 	createSqliteGatewaySessionRoutingStore,
 	resolveSession,
 } from "./session-router.js";
+export type {
+	CreateGatewayTurnStartHandoffFromAcceptedAdmissionInput,
+	CreateGatewayTurnStartHandoffInput,
+	CreateTurnFromHandoffInput,
+	GatewayTurnCreatedResult,
+	GatewayTurnEventMetadata,
+	GatewayTurnEventMetadataAllocator,
+	GatewayTurnGovernorDefaults,
+	GatewayTurnMetadata,
+	GatewayTurnMetadataAllocator,
+	GatewayTurnStartHandoff,
+	GatewayTurnStartedEventPayload,
+	GatewayTurnStartedStreamEvent,
+} from "./turn-creation.js";
+export {
+	createGatewayTurnStartHandoff,
+	createGatewayTurnStartHandoffFromAcceptedAdmission,
+	createTurnFromHandoff,
+	isGatewayTurnStartHandoff,
+} from "./turn-creation.js";

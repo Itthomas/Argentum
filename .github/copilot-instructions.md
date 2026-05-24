@@ -33,5 +33,8 @@
 
 ## Current Repo State
 
-- This repo is still pre-implementation and docs-first.
-- If a build, test, or lint command does not exist yet, the slice may create the minimum project scaffolding needed for the target package and tests.
+- Slices 0001–0011 are validated (contracts boot, environment config loading, runtime bootstrap, gateway admission through release/dequeue).
+- Packages `contracts`, `environment`, `gateway`, and `apps/runtime` have real implementation code and non-vacuous test gates.
+- Packages `agentic_core`, `llm_provider`, `tooling`, `channel_cli`, and `telemetry` are shells awaiting their first implementation slices.
+- The `argentum-orchestrator` agent is the recommended workflow driver for advancing the implementation pipeline.
+- If a build, test, or lint command does not exist yet for a target package, the slice may create the minimum project scaffolding needed.

@@ -11,10 +11,33 @@ This document explains how the repo-level Copilot planning layer should be used 
 - Reusable prompts: [.github/prompts](../../.github/prompts)
 - Custom agents: [.github/agents](../../.github/agents)
 - Skills: [.github/skills](../../.github/skills)
+- Hooks: [.github/hooks](../../.github/hooks)
 - Implementation plan: [docs/implementation/implementation-plan.md](./implementation-plan.md)
 - Durable audit reports: [docs/implementation/audits](./audits)
 
-## Default Operating Loop
+## Default Operating Mode: Orchestrator
+
+The preferred workflow for advancing the implementation is the **`argentum-orchestrator`** pipeline governor. Launch it with a scope and let it coordinate planning, review, implementation, and audit subagents autonomously.
+
+```
+Human: "Orchestrate. Advance from slice 0012 through the contracts cluster."
+```
+
+The orchestrator will:
+1. Maintain a 3-4 slice planning lookahead (plan + review + approve ahead of the cursor)
+2. Implement one slice at a time at the cursor
+3. Auto-resolve routine blockers (HIGH severity findings, validation failures)
+4. Escalate only on CRITICAL findings that require human judgment
+5. Run periodic audits every ~3 slices
+6. Report a session summary when done or blocked
+
+See [.github/agents/argentum-orchestrator.agent.md](../../.github/agents/argentum-orchestrator.agent.md) for the full pipeline-governor procedure.
+
+## Manual Workflow (Fallback)
+
+When the orchestrator is not suitable (one-off tasks, debugging, spec changes), use the manual prompt-and-agent workflow:
+
+### Default Operating Loop
 
 1. Confirm the bootstrap prerequisites in [docs/implementation/bootstrap-decisions.md](./bootstrap-decisions.md).
 2. Use the `/spec-to-slice` skill as the canonical planning entrypoint to create or update a slice card under [docs/implementation/slices](./slices).
@@ -27,9 +50,20 @@ This document explains how the repo-level Copilot planning layer should be used 
 
 `/plan-argentum-slice` remains available as a prompt wrapper around the same planning behavior, but the `/spec-to-slice` skill is the default planner because it bundles the slice template and planning procedure.
 
+## Severity Model
+
+Adversarial review uses four severity tiers. These drive both orchestrator and manual decision-making:
+
+| Tier | Meaning | Action |
+|---|---|---|
+| **CRITICAL** | Spec ambiguity, deferred decision required, architectural conflict, spec gap | **Escalate to human.** Cannot be resolved by an agent. |
+| **HIGH** | Spec drift, missing contract fields, boundary violation, missing required tests, weak validation | Blocking but machine-resolvable. Feed reviewer's revision instructions to implementer. |
+| **MEDIUM** | Insufficient edge-case coverage, wrong-outcome assertions, stale artifacts | Should fix. Auto-refine once. May proceed if unresolved. |
+| **LOW** | Style, naming, documentation, redundant patterns | Note and proceed. Does not block. |
+
 ## When To Use Autopilot
 
-In this repo, autopilot means handing one approved slice to the `argentum-implementer` custom agent or `/implement-argentum-slice` prompt so it can execute the slice end-to-end.
+In this repo, autopilot means handing one approved slice to the `argentum-implementer` custom agent or `/implement-argentum-slice` prompt so it can execute the slice end-to-end. The orchestrator automates this decision as part of the pipeline loop.
 
 Autopilot is appropriate when all of the following are true:
 
@@ -54,7 +88,7 @@ Do not use parallel subagents for overlapping edits or for two agents to evolve 
 
 ## When To Run A Repo Audit
 
-Run `/audit-argentum-implementation` when:
+Run `/audit-argentum-implementation` (or let the orchestrator run it automatically every ~3 slices) when:
 
 - Two or more slices have been implemented and you want to check for cumulative drift.
 - The backlog, slice cards, and implemented code may have diverged.
@@ -65,15 +99,25 @@ The audit prompt and agent are repo-wide review surfaces, not slice-approval rep
 
 ## Recommended Roles
 
+- `argentum-orchestrator`: **primary workflow driver** — pipeline governor that coordinates all other agents
 - `argentum-spec-planner`: turns the spec into one bounded slice
 - `argentum-implementer`: executes one slice with focused validation
-- `argentum-adversarial-review`: searches for drift, missing tests, and weak assumptions
+- `argentum-adversarial-review`: searches for drift, missing tests, and weak assumptions; classifies by CRITICAL/HIGH/MEDIUM/LOW
 - `argentum-implementation-auditor`: audits implemented slices, workflow state, and next-slice readiness against the spec
 
 ## Suggested Session Pattern
 
+### Orchestrator-Driven (Preferred)
+
+1. Launch `argentum-orchestrator` with a scope ("Advance through the contracts cluster").
+2. Orchestrator plans 3-4 slices ahead, reviews, approves, and implements one at a time.
+3. Human reviews session summary and any CRITICAL escalations.
+4. Repeat for the next cluster.
+
+### Manual (Fallback)
+
 1. Start with the planner on the next module or contract boundary.
-2. Review the slice card and mark `Approval: approved` only when it has concrete acceptance criteria and no blocking findings.
+2. Review the slice card and mark `Approval: approved` only when it has concrete acceptance criteria and no CRITICAL or HIGH findings.
 3. Keep the implementation agent on one slice until focused validation passes.
 4. Request adversarial review before widening to the next slice.
 5. Update the implementation backlog and slice-card status after each validated slice.

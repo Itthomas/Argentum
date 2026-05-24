@@ -33,7 +33,11 @@ importers:
         specifier: workspace:*
         version: link:../../packages/environment
 
-  packages/agentic_core: {}
+  packages/agentic_core:
+    dependencies:
+      '@argentum/contracts':
+        specifier: workspace:*
+        version: link:../contracts
 
   packages/channel_cli: {}
 
@@ -55,7 +59,11 @@ importers:
 
   packages/telemetry: {}
 
-  packages/tooling: {}
+  packages/tooling:
+    dependencies:
+      '@argentum/contracts':
+        specifier: workspace:*
+        version: link:../contracts
 
 packages:
 

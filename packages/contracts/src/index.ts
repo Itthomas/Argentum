@@ -1,4 +1,15 @@
 export type {
+	ActionDecision,
+	ActionDecisionValidationCode,
+	ActionDecisionValidationIssue,
+	DecisionKind,
+	ToolCallEntry,
+} from "./action-decision.js";
+export {
+	ActionDecisionValidationError,
+	parseActionDecision,
+} from "./action-decision.js";
+export type {
 	ContentRef,
 	ContentRefKind,
 	ContentRefRetention,
@@ -11,6 +22,33 @@ export {
 	parseContentRef,
 } from "./content-ref.js";
 export type {
+	ContextItem,
+	ContextItemValidationCode,
+	ContextItemValidationIssue,
+	ContextLayer,
+	ContextRetention,
+} from "./context-item.js";
+export {
+	ContextItemValidationError,
+	parseContextItem,
+	parseContextItemArray,
+} from "./context-item.js";
+export type {
+	ApprovalMode,
+	Capability,
+	ExecutionGrantDTO,
+	ExecutionGrantPathPermission,
+	ExecutionGrantValidationCode,
+	ExecutionGrantValidationIssue,
+	NetworkPolicy,
+	PathRoot,
+} from "./execution-grant.js";
+export {
+	ExecutionGrantValidationError,
+	parseExecutionGrant,
+	parseExecutionGrantAtPath,
+} from "./execution-grant.js";
+export type {
 	IngressDTO,
 	IngressValidationCode,
 	IngressValidationIssue,
@@ -19,6 +57,22 @@ export {
 	IngressValidationError,
 	parseIngressDTO,
 } from "./ingress-contract.js";
+export type {
+	AvailableToolEntry,
+	LLMInferenceRequest,
+	LLMInferenceResult,
+	LLMRequestValidationCode,
+	LLMRequestValidationIssue,
+	LLMResultValidationCode,
+	LLMResultValidationIssue,
+	NormalizationStatus,
+} from "./llm-adapter.js";
+export {
+	LLMRequestValidationError,
+	LLMResultValidationError,
+	parseLLMInferenceRequest,
+	parseLLMInferenceResult,
+} from "./llm-adapter.js";
 export type {
 	MessagePart,
 	MessagePartValidationCode,
@@ -46,7 +100,15 @@ export {
 } from "./runtime-config.js";
 export type {
 	RuntimePolicyDTO,
+	RuntimePolicyValidationCode,
+	RuntimePolicyValidationIssue,
 	WorkspaceRootsDTO,
+} from "./runtime-policy.js";
+export {
+	parseRuntimePolicyDTO,
+	parseRuntimePolicyDTOAtPath,
+	parseWorkspaceRootsAtPath,
+	RuntimePolicyValidationError,
 } from "./runtime-policy.js";
 export type {
 	MvpStreamEventKind,
@@ -68,6 +130,40 @@ export {
 	TURN_SCOPED_STREAM_EVENT_FAMILIES,
 	parseStreamEvent,
 } from "./stream-event.js";
+export type {
+	ToolCallDTO,
+	ToolCallDTOValidationCode,
+	ToolCallDTOValidationIssue,
+} from "./tool-call-and-result.js";
+export {
+	parseToolCallDTO,
+	parseToolCallDTOAtPath,
+	ToolCallDTOValidationError,
+} from "./tool-call-and-result.js";
+export type {
+	NetworkAccess,
+	PathScope,
+	SideEffectLevel,
+	ToolDefinition,
+	ToolDefinitionValidationCode,
+	ToolDefinitionValidationIssue,
+} from "./tool-definition.js";
+export {
+	parseToolDefinition,
+	parseToolDefinitionAtPath,
+	ToolDefinitionValidationError,
+} from "./tool-definition.js";
+export type {
+	ToolResultDTO,
+	ToolResultStatus,
+	ToolResultValidationCode,
+	ToolResultValidationIssue,
+} from "./tool-call-and-result.js";
+export {
+	parseToolResultDTO,
+	parseToolResultDTOAtPath,
+	ToolResultValidationError,
+} from "./tool-call-and-result.js";
 export type {
 	TurnBudget,
 	TurnEnvelope,

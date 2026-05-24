@@ -2,14 +2,15 @@
 
 ## Status
 
-- State: planned
+- State: validated
 - Approval: approved
 - Approved by: adversarial review follow-up
 - Approval date: 2026-05-22
 - Phase: 2
 - Owner: gateway
-- Execution readiness: look-ahead only; depends on validated slice 0006 for the accepted-admission seam, slice 0007 for the canonical `TurnEnvelope` contract, and the explicit gateway-owned exclusive turn-creation authority plus preservation-handoff seam planned in [docs/implementation/slices/0010-gateway-exclusive-turn-creation-authority.md](./0010-gateway-exclusive-turn-creation-authority.md). This card itself now owns the shared gateway-local turn-start handoff contract that later queued-ingress dequeue work in slice 0011 must reuse. The non-vacuous gateway boundary-test gate introduced before gateway execution work starts remains required.
-- Implementation precondition note: no additional bootstrap decision is required because the local persistence choice is already recorded in [docs/implementation/bootstrap-decisions.md](../bootstrap-decisions.md), but this slice must not begin while the upstream gateway-owned exclusive turn-creation authority seam in [docs/implementation/slices/0010-gateway-exclusive-turn-creation-authority.md](./0010-gateway-exclusive-turn-creation-authority.md) is still changing shape.
+- Execution readiness: validated. The gateway turn-start handoff and turn creation seam now runs with non-vacuous boundary tests and narrow validation in place.
+- Validation note: local validation passed with `pnpm --filter @argentum/gateway test` and `pnpm typecheck` after remediating the turn-creation boundary to keep lock-state mutation out of this entrypoint.
+- Implementation completion note: this slice now owns the shared gateway-local turn-start handoff contract and canonical turn artifact construction (`TurnEnvelope` + `turn.started`) while deferring persisted active-turn claim consumption and release lifecycle work to [docs/implementation/slices/0011-gateway-lock-release-and-queue-dequeue.md](./0011-gateway-lock-release-and-queue-dequeue.md).
 
 ## Scope
 
@@ -36,13 +37,14 @@
   - The `gateway` package exposes one focused turn-creation entrypoint that accepts one gateway-local turn-start handoff, startup-derived governor defaults, a gateway-owned turn-metadata allocator, and allocator-supplied turn-event metadata.
   - The gateway-local turn-start handoff is owned by this slice and carries one canonical ingress already authorized to start the next turn for its session together with one matching gateway-local exclusive turn-creation authority. The handoff may be produced either directly from the accepted branch of slice 0006 plus slice 0010 authority or from slice 0011 when the oldest queued ingress is dequeued and promoted to the next turn-start candidate.
   - The entrypoint consumes only the gateway-local turn-start handoff and must not accept a bare canonical ingress, channel payload, queued outcome, rejected outcome, or detached exclusive authority.
-  - The exclusive turn-creation authority inside the handoff must be bound to the same `session_id` as the carried ingress and must be the only authority accepted for creating a new `TurnEnvelope`; missing, mismatched, stale, or duplicate authority must not permit overlapping turn creation for the same session.
+  - The exclusive turn-creation authority inside the handoff must be bound to the same `session_id` as the carried ingress. Missing, mismatched, detached, or caller-forged authority must not permit turn creation through this entrypoint.
   - The entrypoint constructs and returns one immutable canonical `TurnEnvelope` imported from `@argentum/contracts` with `session_id` and `ingress_id` preserved from the gateway-local turn-start handoff, initial `state = accepted`, `step_count = 0`, `repair_attempts_used = 0`, `compaction_revision = 0`, empty `context_refs`, and stamped governor defaults.
   - The created `TurnEnvelope.budget` copies `max_inference_steps`, `max_repair_attempts`, and `max_wall_clock_ms` from validated startup governor defaults and initializes `repair_attempts_used = 0` without inventing hidden gateway fallback values.
   - The created `TurnEnvelope` consumes allocator-supplied `turn_id`, `created_at`, and `updated_at` values instead of introducing hidden gateway clock or identifier state.
   - The entrypoint emits exactly one canonical `turn.started` `StreamEvent` with `scope = turn`, allocator-supplied `event_id`, monotonic turn-scoped `sequence`, UTC `timestamp`, `visibility`, required `turn_id`, and the minimum payload required by [docs/spec/20-contracts/stream-event-payloads.md](../../spec/20-contracts/stream-event-payloads.md): `session_id`, `ingress_id`, and `state`.
   - One turn-start handoff produces exactly one `TurnEnvelope` and one `turn.started` event through this slice; the slice must not create additional turn artifacts, mutate queue state, or emit later `turn.*` events.
   - The slice remains limited to accepted-ingress handoff. It does not execute the core loop, emit later `turn.*` events, dequeue queued ingress, acquire or release the session lock, or persist telemetry.
+  - The entrypoint rejects duplicate in-process reuse of the same gateway-owned turn-start handoff or authority object to avoid duplicate turn-start artifacts without mutating persisted lock state.
 - Inputs crossing the boundary:
   - One gateway-local turn-start handoff carrying the canonical ingress and matching exclusive turn-creation authority needed to start exactly one new turn.
   - Validated governor defaults derived from runtime startup output.
@@ -71,6 +73,7 @@
   - Import the canonical `TurnEnvelope` and `StreamEvent` surfaces from `@argentum/contracts`.
   - Define the shared gateway-local turn-start handoff contract in this slice and require both the direct accepted-ingress path and the later queue-dequeue path to reuse it instead of inventing separate turn-start inputs.
   - Consume only one matching turn-start handoff so turn creation cannot bypass queue-admission or one-active-turn policy.
+  - Reject duplicate in-process reuse of the same gateway-owned handoff or authority object while keeping persisted lock-state mutation outside this entrypoint.
   - Verify the exclusive turn-creation authority inside the handoff matches the carried ingress `session_id` before creating any new turn artifact.
   - Stamp the initial turn state and governor budget deterministically from the carried ingress plus validated startup defaults, preserving upstream `session_id` and `ingress_id` rather than recomputing them.
   - Use allocator-provided turn identity and timestamp fields for the new `TurnEnvelope` and allocator-provided top-level event fields for `turn.started`.
@@ -79,13 +82,14 @@
 - Required tests:
   - Gateway boundary tests proving only the shared gateway-local turn-start handoff can create a turn and that bare ingress, queued outcome, rejected outcome, or detached authority inputs are rejected.
   - Gateway boundary tests proving the slice requires one matching exclusive turn-creation authority inside the handoff and preserves the upstream `session_id` and `ingress_id` in the returned canonical `TurnEnvelope`.
-  - Gateway boundary tests proving missing, mismatched, stale, or duplicate authority cannot create overlapping active turns for the same session.
+  - Gateway boundary tests proving missing, mismatched, detached, or caller-forged authority cannot create a turn through this entrypoint.
   - Gateway boundary tests proving a valid direct accepted-ingress handoff and a valid dequeued-ingress handoff both create the same canonical `TurnEnvelope` shape with the required initial field values.
   - Gateway boundary tests proving the returned `TurnEnvelope` satisfies the public `@argentum/contracts` validator rather than only a gateway-local field check.
   - Gateway boundary tests proving governor defaults are copied from validated startup input rather than hidden gateway defaults.
   - Gateway boundary tests proving emitted `turn.started` events satisfy the public `StreamEvent` validator, required payload minimums, allocator-supplied top-level event fields, and `scope = turn` plus required `turn_id` semantics.
   - Gateway boundary tests proving the created `TurnEnvelope` uses allocator-supplied `turn_id`, `created_at`, and `updated_at` values.
   - Gateway boundary tests proving exactly one `turn.started` event is emitted per valid turn-start handoff and no extra turn artifacts are returned.
+  - Gateway boundary tests proving duplicate in-process reuse of the same gateway-owned handoff or authority object is rejected.
   - Gateway boundary tests proving the slice does not execute further state transitions, mutate queue state, change lock state, dequeue backlog, or emit later `turn.*` events.
 - Narrow validation step:
   - `pnpm --filter @argentum/gateway test`
@@ -102,11 +106,13 @@
   - Session routing.
   - Queue admission.
   - Session-lock acquisition.
+  - Persisted active-turn claim consumption lifecycle.
   - Core-loop execution.
   - Lock release and dequeue behavior.
   - Telemetry persistence.
   - Finalization and archival.
 - Deferred decisions that must remain deferred:
+  - Persisted active-turn claim consumption and release lifecycle coordination, owned by [docs/implementation/slices/0011-gateway-lock-release-and-queue-dequeue.md](./0011-gateway-lock-release-and-queue-dequeue.md).
   - Any broader event sequencing or persistence model beyond the single turn-start handoff.
 
 ## Review Log
@@ -127,3 +133,5 @@
   - Replaced the over-broad slice 0008 dependency with one explicit gateway-local exclusive turn-creation authority seam so the card models concurrency safety directly rather than through session-router spillover.
   - Added direct acceptance and test coverage for budget-field stamping, upstream identity preservation, the minimum `turn.started` payload, and public `@argentum/contracts` validation of the created `TurnEnvelope`.
   - Replaced the earlier accepted-ingress-only input surface with one shared gateway-local turn-start handoff contract so both the direct accepted path and the later queue-dequeue path can feed turn creation without inventing a second incompatible seam.
+  - Remediated the turn-creation boundary to keep persisted lock-state mutation outside this entrypoint while retaining duplicate in-process handoff and authority-object reuse protection.
+  - Added focused boundary coverage proving turn creation leaves persisted active-turn lock fields unchanged.

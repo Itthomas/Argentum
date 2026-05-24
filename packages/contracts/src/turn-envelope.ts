@@ -3,6 +3,12 @@ import {
   type ContentRefValidationCode,
   parseContentRefAtPath,
 } from "./content-ref.js";
+import {
+  expectRecord,
+  isPlainObject,
+  joinPath,
+  pushUnknownKeys,
+} from "./validation-helpers.js";
 
 export type TurnState =
   | "accepted"
@@ -21,6 +27,7 @@ export interface TurnBudget {
   readonly max_repair_attempts: number;
   readonly max_wall_clock_ms: number;
   readonly repair_attempts_used: number;
+  readonly max_tokens_per_step?: number;
 }
 
 export interface TurnEnvelope {
@@ -85,6 +92,7 @@ const TURN_BUDGET_FIELDS = new Set([
   "max_repair_attempts",
   "max_wall_clock_ms",
   "repair_attempts_used",
+  "max_tokens_per_step",
 ]);
 
 const TURN_STATES: readonly TurnState[] = [
@@ -105,13 +113,14 @@ const ISO_UTC_TIMESTAMP_PATTERN =
 
 export function parseTurnEnvelope(value: unknown): TurnEnvelope {
   const issues: TurnEnvelopeValidationIssue[] = [];
-  const root = expectRecord(value, "", issues);
+  const addIssue = (issue: TurnEnvelopeValidationIssue) => issues.push(issue);
+  const root = expectRecord(value, "", addIssue);
 
   if (!root) {
     throw new TurnEnvelopeValidationError(issues);
   }
 
-  pushUnknownKeys(root, TURN_ENVELOPE_FIELDS, "", issues);
+  pushUnknownKeys(root, TURN_ENVELOPE_FIELDS, "", addIssue);
 
   const turnId = parseRequiredString(root, "turn_id", "", issues);
   const sessionId = parseRequiredString(root, "session_id", "", issues);
@@ -167,6 +176,7 @@ function parseRequiredBudget(
   path: string,
   issues: TurnEnvelopeValidationIssue[],
 ): TurnBudget | undefined {
+  const addIssue = (issue: TurnEnvelopeValidationIssue) => issues.push(issue);
   const fieldPath = joinPath(path, key);
 
   if (!(key in record)) {
@@ -178,12 +188,12 @@ function parseRequiredBudget(
     return undefined;
   }
 
-  const budgetRecord = expectRecord(record[key], fieldPath, issues);
+  const budgetRecord = expectRecord(record[key], fieldPath, addIssue);
   if (!budgetRecord) {
     return undefined;
   }
 
-  pushUnknownKeys(budgetRecord, TURN_BUDGET_FIELDS, fieldPath, issues);
+  pushUnknownKeys(budgetRecord, TURN_BUDGET_FIELDS, fieldPath, addIssue);
 
   const maxInferenceSteps = parseRequiredNonNegativeInteger(
     budgetRecord,
@@ -209,6 +219,12 @@ function parseRequiredBudget(
     fieldPath,
     issues,
   );
+  const maxTokensPerStep = parseOptionalPositiveInteger(
+    budgetRecord,
+    "max_tokens_per_step",
+    fieldPath,
+    issues,
+  );
 
   if (
     maxInferenceSteps === undefined ||
@@ -224,6 +240,7 @@ function parseRequiredBudget(
     max_repair_attempts: maxRepairAttempts,
     max_wall_clock_ms: maxWallClockMs,
     repair_attempts_used: repairAttemptsUsed,
+    ...(maxTokensPerStep !== undefined ? { max_tokens_per_step: maxTokensPerStep } : {}),
   });
 }
 
@@ -376,6 +393,49 @@ function parseRequiredNonNegativeInteger(
   return value;
 }
 
+function parseOptionalPositiveInteger(
+  record: UnknownRecord,
+  key: string,
+  path: string,
+  issues: TurnEnvelopeValidationIssue[],
+): number | undefined {
+  if (!(key in record)) {
+    return undefined; // field is optional
+  }
+
+  const fieldPath = joinPath(path, key);
+  const value = record[key];
+
+  if (typeof value !== "number") {
+    issues.push({
+      path: fieldPath,
+      code: "invalid_type",
+      message: `Expected "${fieldPath}" to be a number.`,
+    });
+    return undefined;
+  }
+
+  if (!Number.isInteger(value)) {
+    issues.push({
+      path: fieldPath,
+      code: "invalid_integer",
+      message: `Expected "${fieldPath}" to be an integer.`,
+    });
+    return undefined;
+  }
+
+  if (value < 1) {
+    issues.push({
+      path: fieldPath,
+      code: "invalid_value",
+      message: `Expected "${fieldPath}" to be greater than or equal to 1.`,
+    });
+    return undefined;
+  }
+
+  return value;
+}
+
 function parseRequiredUtcTimestamp(
   record: UnknownRecord,
   key: string,
@@ -418,43 +478,6 @@ function parseStringValue(
   return value;
 }
 
-function expectRecord(
-  value: unknown,
-  path: string,
-  issues: TurnEnvelopeValidationIssue[],
-): UnknownRecord | undefined {
-  if (!isPlainObject(value)) {
-    issues.push({
-      path: path || "$",
-      code: "invalid_type",
-      message: `Expected "${path || "$"}" to be an object.`,
-    });
-    return undefined;
-  }
-
-  return value;
-}
-
-function pushUnknownKeys(
-  record: UnknownRecord,
-  allowedKeys: Set<string>,
-  path: string,
-  issues: TurnEnvelopeValidationIssue[],
-): void {
-  for (const key of Object.keys(record)) {
-    if (allowedKeys.has(key)) {
-      continue;
-    }
-
-    const fieldPath = joinPath(path, key);
-    issues.push({
-      path: fieldPath,
-      code: "unknown_key",
-      message: `Unknown field "${fieldPath}".`,
-    });
-  }
-}
-
 function isValidUtcTimestamp(value: string): boolean {
   const normalizedValue = value.trim();
   const isoMatch = ISO_UTC_TIMESTAMP_PATTERN.exec(normalizedValue);
@@ -481,17 +504,4 @@ function isValidUtcTimestamp(value: string): boolean {
 
   const parsed = new Date(normalizedValue);
   return !Number.isNaN(parsed.getTime());
-}
-
-function isPlainObject(value: unknown): value is UnknownRecord {
-  if (typeof value !== "object" || value === null) {
-    return false;
-  }
-
-  const prototype = Object.getPrototypeOf(value);
-  return prototype === Object.prototype || prototype === null;
-}
-
-function joinPath(path: string, key: string): string {
-  return path ? `${path}.${key}` : key;
 }

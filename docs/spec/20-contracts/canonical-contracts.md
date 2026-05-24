@@ -27,6 +27,7 @@ This document defines the authoritative contract set used across Argentum module
 | `ExecutionGrantDTO` | Scoped execution permissions | `execution-grant.md` | environment grant resolver | core loop, tool layer, execution driver |
 | `RuntimePolicyDTO` | Canonical runtime policy input for grant derivation | `runtime-policy.md` | environment configuration layer | environment grant resolver, gateway, tool layer |
 | `RuntimeConfigDTO` | Operator-facing serialized runtime configuration | `runtime-config.md` | environment configuration layer | application composition root, environment layer |
+| `ToolDefinition` | Canonical provider-neutral tool schema definition | `tool-schema-model.md` | tool registry | environment grant resolver, LLM adapter |
 | `LLMInferenceRequest` / `LLMInferenceResult` | Normalized provider adapter boundary | `llm-adapter-contract.md` | prompt compiler, core loop, LLM adapter | LLM adapter, core loop |
 
 ## Canonical Normalization Boundary

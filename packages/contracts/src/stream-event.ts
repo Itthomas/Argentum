@@ -1,3 +1,8 @@
+// NOTE: stream-event.ts retains local expectRecord/joinPath/pushUnknownKeys
+// because its callers use array.push() rather than the callback-based
+// signatures exported from validation-helpers.ts.  A future extraction
+// pass can unify the pattern.
+
 export type StreamEventScope = "session" | "turn";
 
 export type StreamEventVisibility = "user" | "system" | "telemetry";

@@ -5,6 +5,8 @@ import type {
   ToolDefinition,
   TurnBudget,
 } from "@argentum/contracts";
+import * as toolingDiscovery from "@argentum/tooling";
+import type { ToolExposureRequest } from "@argentum/tooling";
 import { randomUUID } from "node:crypto";
 
 // ── InferencePolicy ─────────────────────────────────────────────
@@ -41,8 +43,8 @@ export interface PromptCompilerInput {
   readonly turnId: string;
   /** Ordered context items selected for this step (required, non-empty). */
   readonly contextItems: readonly ContextItem[];
-  /** Provider-neutral tool schemas exposed for this step (required, may be empty). */
-  readonly availableTools: readonly ToolDefinition[];
+  /** Registry-owned tool definitions available to expose for this step (required, may be empty). */
+  readonly registeredTools: readonly ToolDefinition[];
   /** Optional override for request_id; generated via crypto.randomUUID() if omitted. */
   readonly requestId?: string;
   /** Optional inference policy overrides. */
@@ -55,6 +57,21 @@ export interface PromptCompilerInput {
   readonly onBudgetWarning?: (estimated: number, max: number) => void;
   /** Optional turn budget for token-awareness (C1). */
   readonly budget?: TurnBudget;
+}
+
+export type PromptCompilerToolExposurePolicy =
+  | { readonly mode: "all" }
+  | {
+      readonly mode: "explicit";
+      readonly toolNames: readonly string[];
+    };
+
+export interface PromptCompilerDependencies {
+  /**
+   * Composition-time default discovery policy for the current step.
+   * The prompt compiler still constructs the per-step request internally.
+   */
+  readonly defaultToolExposurePolicy: PromptCompilerToolExposurePolicy;
 }
 
 // ── PromptCompilerError ─────────────────────────────────────────
@@ -95,6 +112,12 @@ const DEFAULT_NORMALIZATION_MODE = "native_tool" as const;
  * does NOT import or reference any provider-native types.
  */
 export class PromptCompiler {
+  readonly #defaultToolExposurePolicy: PromptCompilerToolExposurePolicy;
+
+  constructor(deps: PromptCompilerDependencies) {
+    this.#defaultToolExposurePolicy = deps.defaultToolExposurePolicy;
+  }
+
   // ── Public entrypoint ─────────────────────────────────────────
 
   /**
@@ -110,7 +133,12 @@ export class PromptCompiler {
 
     const requestId = input.requestId ?? randomUUID();
     const policy = this.resolvePolicy(input.inferencePolicy);
-    const availableTools = this.convertTools(input.availableTools);
+    const exposureRequest = this.createToolExposureRequest();
+    const exposurePlan = toolingDiscovery.planToolExposure(
+      input.registeredTools,
+      exposureRequest,
+    );
+    const availableTools = this.convertTools(exposurePlan.exposedTools);
 
     return {
       request_id: requestId,
@@ -118,6 +146,17 @@ export class PromptCompiler {
       context_items: [...input.contextItems],
       available_tools: availableTools,
       inference_policy: policy,
+    };
+  }
+
+  private createToolExposureRequest(): ToolExposureRequest {
+    if (this.#defaultToolExposurePolicy.mode === "all") {
+      return { mode: "all" };
+    }
+
+    return {
+      mode: "explicit",
+      toolNames: [...this.#defaultToolExposurePolicy.toolNames],
     };
   }
 
@@ -200,12 +239,12 @@ export class PromptCompiler {
   }
 
   private validateToolDefinitions(input: PromptCompilerInput): void {
-    const tools = input.availableTools;
+    const tools = input.registeredTools;
 
     if (!Array.isArray(tools)) {
       throw new PromptCompilerError(
         "INVALID_TOOL_DEFINITION",
-        "availableTools must be an array.",
+        "registeredTools must be an array.",
       );
     }
 
@@ -214,13 +253,13 @@ export class PromptCompiler {
       if (typeof tool.name !== "string" || tool.name.length === 0) {
         throw new PromptCompilerError(
           "INVALID_TOOL_DEFINITION",
-          `availableTools[${i}]: missing or empty name (tool_name).`,
+          `registeredTools[${i}]: missing or empty name (tool_name).`,
         );
       }
       if (typeof tool.description !== "string" || tool.description.length === 0) {
         throw new PromptCompilerError(
           "INVALID_TOOL_DEFINITION",
-          `availableTools[${i}]: missing or empty description.`,
+          `registeredTools[${i}]: missing or empty description.`,
         );
       }
       if (
@@ -230,7 +269,7 @@ export class PromptCompiler {
       ) {
         throw new PromptCompilerError(
           "INVALID_TOOL_DEFINITION",
-          `availableTools[${i}]: input_schema must be a non-null object.`,
+          `registeredTools[${i}]: input_schema must be a non-null object.`,
         );
       }
     }

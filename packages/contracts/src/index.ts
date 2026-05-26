@@ -1,4 +1,7 @@
 export type {
+	ChannelIngressPayload,
+} from "./channel-ingress-payload.js";
+export type {
 	ActionDecision,
 	ActionDecisionValidationCode,
 	ActionDecisionValidationIssue,

@@ -29,17 +29,48 @@ importers:
 
   apps/runtime:
     dependencies:
+      '@argentum/agentic-core':
+        specifier: workspace:*
+        version: link:../../packages/agentic_core
+      '@argentum/channel-cli':
+        specifier: workspace:*
+        version: link:../../packages/channel_cli
+      '@argentum/contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts
       '@argentum/environment':
         specifier: workspace:*
         version: link:../../packages/environment
+      '@argentum/gateway':
+        specifier: workspace:*
+        version: link:../../packages/gateway
+      '@argentum/llm-provider':
+        specifier: workspace:*
+        version: link:../../packages/llm_provider
+      '@argentum/telemetry':
+        specifier: workspace:*
+        version: link:../../packages/telemetry
+      '@argentum/tooling':
+        specifier: workspace:*
+        version: link:../../packages/tooling
 
   packages/agentic_core:
     dependencies:
       '@argentum/contracts':
         specifier: workspace:*
         version: link:../contracts
+      '@argentum/llm-provider':
+        specifier: workspace:*
+        version: link:../llm_provider
+      '@argentum/tooling':
+        specifier: workspace:*
+        version: link:../tooling
 
-  packages/channel_cli: {}
+  packages/channel_cli:
+    dependencies:
+      '@argentum/contracts':
+        specifier: workspace:*
+        version: link:../contracts
 
   packages/contracts: {}
 
@@ -55,9 +86,17 @@ importers:
         specifier: workspace:*
         version: link:../contracts
 
-  packages/llm_provider: {}
+  packages/llm_provider:
+    dependencies:
+      '@argentum/contracts':
+        specifier: workspace:*
+        version: link:../contracts
 
-  packages/telemetry: {}
+  packages/telemetry:
+    dependencies:
+      '@argentum/contracts':
+        specifier: workspace:*
+        version: link:../contracts
 
   packages/tooling:
     dependencies:

@@ -16,6 +16,12 @@ export {
 	createSqliteGatewayActiveTurnClaimStore,
 	isGatewayExclusiveTurnCreationAuthority,
 	} from "./active-turn-claim.js";
+export {
+	Gateway,
+	type GatewayAdmitInput,
+	type GatewayConfig,
+	type GatewayReleaseInput,
+} from "./gateway-facade.js";
 export type {
 	CreateSqliteGatewayReleaseAndDequeueStoreInput,
 	GatewayDequeuedEventPayload,
@@ -85,3 +91,11 @@ export {
 	createTurnFromHandoff,
 	isGatewayTurnStartHandoff,
 } from "./turn-creation.js";
+export type {
+	GatewayTelemetryCorrelation,
+	TurnSequenceCounter,
+} from "./gateway-telemetry.js";
+export {
+	assertGatewayTelemetryEvent,
+	createTurnSequenceCounter,
+} from "./gateway-telemetry.js";

@@ -21,7 +21,7 @@ This spec defines the terminal CLI channel module for MVP.
 - One local interactive terminal channel
 - No multi-user terminal multiplexing
 - No rich TUI requirement
-- Each accepted terminal input is normalized into one `IngressDTO` containing exactly one `MessagePart` with `kind = text`.
+- Each accepted terminal input is normalized into one `ChannelIngressPayload` containing exactly one `MessagePart` with `kind = text`. The gateway owns full `IngressDTO` construction — it adds `ingress_id` and `session_id` to the normalized payload.
 
 ## Acceptance Criteria
 

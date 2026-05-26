@@ -179,6 +179,12 @@ export class ToolRegistry {
     return entries;
   }
 
+  snapshotDefinitions(): readonly ToolDefinition[] {
+    return Object.freeze(
+      Array.from(this._entries.values(), ({ definition }) => definition),
+    );
+  }
+
   // ── Introspection helpers ───────────────────────────────────
 
   isRegistered(name: string): boolean {

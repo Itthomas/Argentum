@@ -5,7 +5,8 @@ import type {
   TurnBudget,
 } from "@argentum/contracts";
 import { parseLLMInferenceRequest } from "@argentum/contracts";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import * as toolingModule from "@argentum/tooling";
 
 import {
   PromptCompiler,
@@ -77,14 +78,21 @@ function makeInput(
       makeContextItem({ context_id: "ctx-2", token_estimate: 30 }),
       makeContextItem({ context_id: "ctx-3", token_estimate: 20 }),
     ],
-    availableTools: [makeToolDefinition()],
+    registeredTools: [makeToolDefinition()],
     ...overrides,
   };
 }
 
+function getQuerySchemaType(definition: { input_schema: Record<string, unknown> }): string {
+  return ((((definition.input_schema.properties ?? {}) as Record<string, unknown>)
+    .path as Record<string, unknown>).type as string);
+}
+
 // ── Instantiation ────────────────────────────────────────────────
 
-const compiler = new PromptCompiler();
+const compiler = new PromptCompiler({
+  defaultToolExposurePolicy: { mode: "all" },
+});
 
 // ══════════════════════════════════════════════════════════════════
 // Happy path tests
@@ -113,7 +121,7 @@ describe("PromptCompiler — happy path", () => {
   });
 
   it("empty tools array is valid (no-tool step)", () => {
-    const input = makeInput({ availableTools: [] });
+    const input = makeInput({ registeredTools: [] });
     const result = compiler.compile(input);
 
     expect(result.available_tools).toHaveLength(0);
@@ -206,7 +214,7 @@ describe("PromptCompiler — ToolDefinition→AvailableToolEntry stripping (H1)"
       default_timeout_ms: 30000,
       defaults: { cwd: "/tmp" },
     };
-    const input = makeInput({ availableTools: [tool] });
+    const input = makeInput({ registeredTools: [tool] });
     const result = compiler.compile(input);
 
     const entry = result.available_tools[0]!;
@@ -229,7 +237,7 @@ describe("PromptCompiler — ToolDefinition→AvailableToolEntry stripping (H1)"
       makeToolDefinition({ name: "tool-a" }),
       makeToolDefinition({ name: "tool-b" }),
     ];
-    const input = makeInput({ availableTools: tools });
+    const input = makeInput({ registeredTools: tools });
     const result = compiler.compile(input);
 
     expect(result.available_tools).toHaveLength(2);
@@ -444,7 +452,7 @@ describe("PromptCompiler — error cases", () => {
   it("INVALID_TOOL_DEFINITION: missing tool name", () => {
     const badTool = makeToolDefinition();
     delete (badTool as Record<string, unknown>).name;
-    const input = makeInput({ availableTools: [badTool] });
+    const input = makeInput({ registeredTools: [badTool] });
 
     expect(() => compiler.compile(input)).toThrow(PromptCompilerError);
     try {
@@ -460,7 +468,7 @@ describe("PromptCompiler — error cases", () => {
   it("INVALID_TOOL_DEFINITION: missing input_schema", () => {
     const badTool = makeToolDefinition();
     delete (badTool as Record<string, unknown>).input_schema;
-    const input = makeInput({ availableTools: [badTool] });
+    const input = makeInput({ registeredTools: [badTool] });
 
     expect(() => compiler.compile(input)).toThrow(PromptCompilerError);
     try {
@@ -569,7 +577,7 @@ describe("PromptCompiler — parseLLMInferenceRequest round-trip (H4)", () => {
         max_output_tokens: 1024,
         normalization_mode: "parsed_text",
       },
-      availableTools: [
+      registeredTools: [
         makeToolDefinition({ name: "search", description: "Search tool" }),
         makeToolDefinition({ name: "execute", description: "Execute tool" }),
       ],
@@ -630,12 +638,109 @@ describe("PromptCompiler — caller ordering preserved (H2)", () => {
       makeToolDefinition({ name: "a-tool" }),
       makeToolDefinition({ name: "m-tool" }),
     ];
-    const input = makeInput({ availableTools: tools });
+    const input = makeInput({ registeredTools: tools });
     const result = compiler.compile(input);
 
     expect(result.available_tools[0]!.name).toBe("z-tool");
     expect(result.available_tools[1]!.name).toBe("a-tool");
     expect(result.available_tools[2]!.name).toBe("m-tool");
+  });
+
+  it("constructs the current-step exposure request in the prompt-compiler path and attaches exposed available_tools", () => {
+    const planToolExposureSpy = vi.spyOn(toolingModule, "planToolExposure");
+    const input = makeInput({
+      registeredTools: [
+        makeToolDefinition({ name: "tool-z" }),
+        makeToolDefinition({ name: "tool-a" }),
+      ],
+    });
+
+    const result = compiler.compile(input);
+
+    expect(planToolExposureSpy).toHaveBeenCalledOnce();
+    const [snapshot, request] = planToolExposureSpy.mock.calls[0] ?? [];
+    expect(snapshot).toEqual(input.registeredTools);
+    expect(request).toEqual({ mode: "all" });
+    expect(result.available_tools).toEqual([
+      {
+        name: "tool-z",
+        description: "Read a file from the workspace",
+        input_schema: { type: "object", properties: { path: { type: "string" } } },
+      },
+      {
+        name: "tool-a",
+        description: "Read a file from the workspace",
+        input_schema: { type: "object", properties: { path: { type: "string" } } },
+      },
+    ]);
+
+    planToolExposureSpy.mockRestore();
+  });
+
+  it("forwards an explicit exposure request and narrows available_tools to the requested subset order", () => {
+    const explicitPolicyCompiler = new PromptCompiler({
+      defaultToolExposurePolicy: {
+        mode: "explicit",
+        toolNames: ["tool-a", "tool-z"],
+      },
+    });
+    const planToolExposureSpy = vi.spyOn(toolingModule, "planToolExposure");
+    const input = makeInput({
+      registeredTools: [
+        makeToolDefinition({ name: "tool-z" }),
+        makeToolDefinition({ name: "tool-a" }),
+        makeToolDefinition({ name: "tool-m" }),
+      ],
+    });
+
+    const result = explicitPolicyCompiler.compile(input);
+
+    expect(planToolExposureSpy).toHaveBeenCalledOnce();
+    const [snapshot, request] = planToolExposureSpy.mock.calls[0] ?? [];
+    expect(snapshot).toEqual(input.registeredTools);
+    expect(request).toEqual({
+      mode: "explicit",
+      toolNames: ["tool-a", "tool-z"],
+    });
+    expect(result.available_tools).toEqual([
+      {
+        name: "tool-a",
+        description: "Read a file from the workspace",
+        input_schema: { type: "object", properties: { path: { type: "string" } } },
+      },
+      {
+        name: "tool-z",
+        description: "Read a file from the workspace",
+        input_schema: { type: "object", properties: { path: { type: "string" } } },
+      },
+    ]);
+
+    planToolExposureSpy.mockRestore();
+  });
+
+  it("prevents nested available_tools schema mutation from leaking back into registry-owned definitions", () => {
+    const registry = new toolingModule.ToolRegistry();
+    registry.register(makeToolDefinition(), async (call) => ({
+      call_id: call.call_id,
+      status: "success",
+      human_summary: "ok",
+      duration_ms: 1,
+      truncated: false,
+      retryable: false,
+    }));
+    const input = makeInput({ registeredTools: registry.snapshotDefinitions() });
+
+    const result = compiler.compile(input);
+
+    expect(() => {
+      ((((result.available_tools[0]!.input_schema.properties ?? {}) as Record<string, unknown>)
+        .path as Record<string, unknown>).type) = "number";
+    }).toThrow(TypeError);
+
+    const freshSnapshot = registry.snapshotDefinitions();
+
+    expect(getQuerySchemaType(freshSnapshot[0]!)).toBe("string");
+    expect(getQuerySchemaType(registry.getDefinition("read_file")!)).toBe("string");
   });
 });
 

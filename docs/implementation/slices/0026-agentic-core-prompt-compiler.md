@@ -29,9 +29,10 @@
   - **`PromptCompilerInput` type exported**: a validated input bag with:
     - `turnId: string` — the owning turn identifier (required)
     - `contextItems: ContextItem[]` — ordered context items selected for this step (required, must be non-empty for MVP; an empty array throws `PromptCompilerError`)
-    - `availableTools: ToolDefinition[]` — provider-neutral tool schemas exposed for this step (required, may be empty — no-tool steps are valid)
+    - `registeredTools: ToolDefinition[]` — registry-owned canonical tool definitions available for this step (required, may be empty)
     - `requestId?: string` — optional override; if omitted, the compiler generates a unique `request_id`
     - `inferencePolicy?: InferencePolicy` — optional policy knobs (temperature, max output budget, normalization mode); if omitted, sensible defaults are applied
+  - **`PromptCompilerDependencies` exported**: constructor dependencies include `defaultToolExposurePolicy`, an explicit composition-time discovery policy. The compiler still constructs the per-step `ToolExposureRequest` internally.
   - **`InferencePolicy` type exported**: a lightweight type with optional fields:
     - `temperature?: number` — clamped to [0, 2] during validation (default 0.7)
     - `max_output_tokens?: number` — must be > 0 if provided (default 4096)
@@ -47,7 +48,7 @@
     - `request_id`: the provided `requestId` or a generated v4 UUID
     - `turn_id`: the provided `turnId`
     - `context_items`: a shallow copy of the validated `contextItems` array
-    - `available_tools`: a shallow copy of the validated `availableTools` array
+    - `available_tools`: the exposed provider-neutral tool schemas derived from validated `registeredTools` under the compiler-owned current-step exposure request
     - `inference_policy`: the resolved `InferencePolicy` with defaults applied
   - **Provider neutrality enforced**: The compiler operates exclusively on `ContextItem` and `ToolDefinition` — it does NOT import, reference, or accept any provider-native types. The same compiler output can be consumed by any provider adapter without compiler changes.
   - **Budget awareness**: The compiler computes an estimated token count from `contextItems` (summing each item's `token_estimate` field, treating absent/undefined estimates as 0). If `turnBudget.max_tokens_per_step` is provided and the estimate exceeds it, the compiler does NOT reject — it emits a warning via a `onBudgetWarning` callback if provided, but proceeds. Budget enforcement is owned by the governor (future slice), not the compiler.
@@ -61,11 +62,12 @@
     - Mutate input objects (all outputs are new objects or shallow copies)
 - Inputs crossing the boundary:
   - `ContextItem[]` — selected and ordered context items (from context selection policy or caller)
-  - `ToolDefinition[]` — provider-neutral tool schemas (from tool registry)
+  - `ToolDefinition[]` — registry-owned canonical tool definitions (from tool registry snapshot)
   - `turnId: string` — owning turn identifier
   - Optional `InferencePolicy` overrides
   - Optional `requestId` override
   - Optional `onBudgetWarning` callback
+  - Explicit composition-time `defaultToolExposurePolicy`
 - Outputs crossing the boundary:
   - `LLMInferenceRequest` — fully assembled, provider-neutral inference request
   - `PromptCompiler` class exported from `@argentum/agentic-core`
@@ -102,7 +104,7 @@
 - Required tests:
   - **Happy path — basic request**: Provide valid `turnId` + 3 `ContextItem` values + 1 `ToolDefinition`. Assert returned `LLMInferenceRequest` has correct `turn_id`, `context_items` length 3, `available_tools` length 1, generated `request_id` is a non-empty string.
   - **Happy path — custom requestId**: Provide `requestId: "custom-req-1"`. Assert `request_id === "custom-req-1"`.
-  - **Happy path — empty tools**: Provide `availableTools: []`. Assert `available_tools` is an empty array (no-tool steps are valid).
+  - **Happy path — empty tools**: Provide `registeredTools: []`. Assert `available_tools` is an empty array (no-tool step).
   - **Happy path — inference policy defaults**: Omit `inferencePolicy`. Assert returned policy has `temperature: 0.7`, `max_output_tokens: 4096`, `normalization_mode: "native_tool"`.
   - **Happy path — custom inference policy**: Provide `inferencePolicy: { temperature: 0.3, max_output_tokens: 2048, normalization_mode: "json_mode" }`. Assert policy fields match exactly.
   - **Happy path — bedrock items preserved**: Include a `ContextItem` with `layer: "bedrock"`. Assert it appears in output unchanged.

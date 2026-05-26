@@ -1,140 +1,153 @@
 # Argentum
 
-**A modular agentic runtime built around a deterministic turn loop.**
+Argentum is a modular, local-first agent runtime built around a deterministic turn loop. The agentic core is the control plane, the gateway is a routing boundary, and every module communicates through canonical TypeScript contracts.
 
-Argentum is a local-first, provider-neutral agent framework that inverts the conventional architecture: the agentic loop is the control plane, and the messaging gateway is a thin I/O boundary. It communicates exclusively through typed contracts, keeps state ownership explicit, and compacts tool output before it enters working memory.
+This repository is intentionally spec-first. The authoritative MVP behavior lives under [`docs/spec/`](docs/spec/README.md), and the implementation advances one bounded slice at a time against that spec.
 
----
+## Why Argentum
 
-## Architecture at a Glance
+- Deterministic single-agent turn execution with explicit state transitions and bounded repair/governor behavior
+- Provider-neutral core loop with normalized LLM decisions behind a concrete DeepSeek adapter
+- FIFO session queueing with one active turn per session and reject-newest overflow at 8 queued items
+- Inline compaction for large tool outputs before they enter episodic memory
+- Flat JSONL telemetry plus persisted content references for replayable debugging
+- Immutable bedrock and separate working, artifact, and log roots for runtime state
 
-```
-[Channel] → [Gateway] → [Agentic Core Loop] → [LLM Adapter]
-                           │          │
-                           ▼          ▼
-                    [Tool Layer]  [Environment]
-```
+## Current Status
 
-- **Channel modules** normalize platform-specific input (CLI, Discord, Slack) into the framework's canonical ingress format.
-- **Gateway** manages session routing, per-session locking, FIFO queuing (cap 8, reject-newest overflow), and telemetry.
-- **Agentic Core** owns the deterministic ReAct state machine: `accepted → building_context → inferring → validating → executing_tools → compacting → responding → finalizing`.
-- **LLM Provider Layer** translates semantic context arrays into provider-specific API calls and normalizes responses into canonical `ActionDecision` objects.
-- **Tool Layer** registers capabilities, enforces input schemas, and provides progressive discovery to the model.
-- **Environment Layer** provides the workspace filesystem, runtime configuration, execution grants, and the sandbox where tools run.
+Argentum's MVP reference implementation is in-repo and validated through slice 0040.
 
-## Design Principles
-
-- **Agent-first control plane** — the turn loop defines behavior; channels and gateways feed and observe it.
-- **Explicit state ownership** — no global state; each layer owns its mutable data and communicates through typed DTOs.
-- **Provider-neutral core** — the core loop never touches provider-native tool-call shapes or SDK objects.
-- **Tool registry as canonical schema source** — tool definitions originate in the tool layer and are projected outward.
-- **Compaction over transcript sprawl** — large tool outputs are summarized and referenced, not dumped into episodic memory.
-- **Observability before magic** — every state transition emits a typed `StreamEvent`; execution is traceable via flat JSON-lines logs.
-
-## Current State
-
-Argentum is in **active MVP implementation**. The contracts-first pipeline is producing validated, tested slices:
-
-| Package | Status |
+| Package | Current responsibility |
 | --- | --- |
-| `@argentum/contracts` | ✅ Contracts for runtime config, ingress, stream events, content refs, turn envelopes, and context items (178 tests) |
-| `@argentum/environment` | ✅ Runtime config loading with startup validation |
-| `@argentum/gateway` | ✅ Ingress admission, session routing, active-turn claims, turn creation, lock release & queue dequeue |
-| `@argentum/runtime` | ✅ Bootstrap composition with validated config |
-| `@argentum/agentic_core` | 🧱 Shell — awaiting first implementation slice |
-| `@argentum/llm_provider` | 🧱 Shell — awaiting first implementation slice |
-| `@argentum/tooling` | 🧱 Shell — awaiting first implementation slice |
-| `@argentum/channel_cli` | 🧱 Shell — awaiting first implementation slice |
-| `@argentum/telemetry` | 🧱 Shell — awaiting first implementation slice |
+| `@argentum/contracts` | Canonical DTOs and validators for config, ingress, turn, tool, provider, telemetry, and content boundaries |
+| `@argentum/environment` | Startup config loading, grant resolution, execution-driver seam, artifact storage, and workspace path guarding |
+| `@argentum/gateway` | Session routing, queueing, active-turn claims, turn creation, release, and dequeue |
+| `@argentum/agentic-core` | State machine, episodic memory, prompt compiler, context selection, compaction, governor, validation repair, and orchestrator |
+| `@argentum/llm-provider` | Provider abstraction, tool-schema projection, and DeepSeek adapter |
+| `@argentum/tooling` | Tool registry, schema validation, retry policy, and discovery planning |
+| `@argentum/channel-cli` | CLI input normalization and terminal rendering |
+| `@argentum/telemetry` | JSONL event persistence and flush behavior |
+| `@argentum/runtime` | Composition root plus the supported `startRuntime()` -> `runCliTurn()` happy-path seam |
 
-Completed slices: 0001–0012. Up next: `ActionDecision` (0013), `ExecutionGrantDTO` (0015), `ToolCallDTO` / `ToolResultDTO` (0014), and the LLM adapter boundary (0016).
+- `pnpm test` currently discovers 1,373 tests across 43 files.
+- All workspace packages now have non-vacuous test gates.
+- The active implementation cursor and approved next slices live in [`docs/implementation/backlog.md`](docs/implementation/backlog.md).
 
-## Repo Structure
+## Architecture At A Glance
 
+```text
+[CLI Channel] -> [Gateway] -> [Agentic Core] -> [LLM Provider]
+                                                 |             |
+                                                 v             v
+                                    [Telemetry]    [Tooling]
+                                                                                     |
+                                                                                     v
+                                                                       [Environment]
 ```
+
+- **Channel layer** normalizes terminal input and renders stream events back to the user.
+- **Gateway** owns session identity, one-active-turn enforcement, FIFO queueing, and turn handoff boundaries.
+- **Agentic core** executes the deterministic loop: `accepted -> building_context -> inferring -> validating -> executing_tools -> compacting -> responding -> finalizing`.
+- **LLM provider layer** converts provider-specific responses into canonical `ActionDecision` results.
+- **Tooling** owns tool definitions, validation, retry policy, and discovery surfaces.
+- **Environment** owns runtime config, workspace roots, grants, artifact persistence, and host-execution seams.
+- **Telemetry** persists flat JSONL event streams suitable for replay and debugging.
+
+## Repository Layout
+
+```text
 argentum/
-├── apps/
-│   └── runtime/              # Runtime composition & bootstrap
-├── packages/
-│   ├── contracts/            # Canonical DTOs shared across all modules
-│   ├── environment/          # Workspace layout, grants, config loading
-│   ├── gateway/              # Session routing, queueing, locking, turn creation
-│   ├── agentic_core/         # Prompt compiler, episodic memory, turn loop
-│   ├── llm_provider/         # Provider interface + DeepSeek adapter
-│   ├── tooling/              # Tool registry, schemas, execution routing
-│   ├── channel_cli/          # Terminal I/O adapter
-│   └── telemetry/            # Event persistence & log formatting
-├── config/
-│   ├── runtime.json          # Active runtime configuration
-│   └── runtime.example.json  # Annotated example config
-├── runtime/                  # Runtime working directories
-│   ├── bedrock/              # Immutable persona & policy files
-│   ├── working/              # Mutable agent working area
-│   ├── artifacts/            # Persisted tool output artifacts
-│   └── logs/                 # Flat JSON-lines telemetry
-├── docs/
-│   ├── spec/                 # Authoritative implementation spec (source of truth)
-│   └── implementation/       # Slice plans, audits, backlog
-└── tsconfig.base.json        # Shared TypeScript configuration
+|- apps/
+|  `- runtime/              # Runtime composition root and end-to-end seams
+|- packages/
+|  |- contracts/            # Canonical shared contracts
+|  |- environment/          # Config loading, grants, artifacts, execution seams
+|  |- gateway/              # Session routing, queueing, turn ownership
+|  |- agentic_core/         # Deterministic loop and memory orchestration
+|  |- llm_provider/         # Provider abstraction and DeepSeek adapter
+|  |- tooling/              # Registry, schemas, retry, discovery
+|  |- channel_cli/          # Terminal input/output adapter
+|  `- telemetry/            # JSONL event persistence
+|- config/
+|  |- runtime.json          # Active runtime configuration
+|  `- runtime.example.json  # Example config shape
+|- runtime/
+|  |- bedrock/              # Immutable runtime inputs
+|  |- working/              # Mutable session working area
+|  |- artifacts/            # Persisted tool output artifacts
+|  `- logs/                 # Telemetry output
+`- docs/
+       |- spec/                 # Authoritative MVP spec
+       `- implementation/       # Backlog, slice cards, and audits
 ```
 
 ## Quick Start
 
-**Prerequisites:** Node.js ≥ 22, pnpm ≥ 11
+Prerequisites: Node.js 22+ and pnpm 11+
 
 ```bash
-# Install dependencies
 pnpm install
-
-# Build all packages
 pnpm build
-
-# Run all tests
 pnpm test
-
-# Run tests for a specific package
-pnpm --filter @argentum/gateway test
-
-# Type-check the workspace
+pnpm lint
 pnpm typecheck
 ```
 
-## Spec as Source of Truth
+Before composing the runtime, review [`config/runtime.json`](config/runtime.json). The example at [`config/runtime.example.json`](config/runtime.example.json) shows the expected JSON shape, including workspace roots, governor defaults, gateway queue policy, tool policy, telemetry settings, and the DeepSeek provider block.
 
-For implementation work, the authoritative spec lives under [`docs/spec/`](docs/spec/README.md):
+## Runtime Entry Points
 
-1. [`00-overview/framework-overview.md`](docs/spec/00-overview/framework-overview.md) — system intent and architectural shape
-2. [`00-overview/mvp-scope.md`](docs/spec/00-overview/mvp-scope.md) — what is (and isn't) in MVP
-3. [`20-contracts/canonical-contracts.md`](docs/spec/20-contracts/canonical-contracts.md) — the DTOs that cross module boundaries
-4. [`30-core-loop/core-loop-state-machine.md`](docs/spec/30-core-loop/core-loop-state-machine.md) — deterministic turn execution semantics
-5. Module leaf specs under [`40-modules/`](docs/spec/40-modules/)
-6. ADRs under [`60-adr/`](docs/spec/60-adr/) for decision rationale
-7. [`70-roadmap/deferred-decisions.md`](docs/spec/70-roadmap/deferred-decisions.md) for unresolved choices
+Argentum does not yet expose a polished root-level CLI command. The supported runtime surface today is the composed API in [`apps/runtime/`](apps/runtime/):
 
-The vision document at [`docs/Argentum_Modular_Agentic_Framework.md`](docs/Argentum_Modular_Agentic_Framework.md) provides non-normative roadmap context; where it conflicts with the spec tree, the spec tree wins.
+- [`apps/runtime/src/index.ts`](apps/runtime/src/index.ts) exposes `bootstrapRuntime()` and re-exports the runtime composition entrypoint.
+- [`apps/runtime/src/composition-root.ts`](apps/runtime/src/composition-root.ts) exposes `startRuntime()` and the supported `runCliTurn()` happy-path seam.
+- [`apps/runtime/tests/e2e-happy-path.test.ts`](apps/runtime/tests/e2e-happy-path.test.ts) shows the end-to-end CLI response path.
+- [`apps/runtime/tests/tool-call.e2e.test.ts`](apps/runtime/tests/tool-call.e2e.test.ts) shows the tool-call path through the composed runtime.
+
+## Spec Source Of Truth
+
+For implementation work, start with [`docs/spec/README.md`](docs/spec/README.md) and follow the repo's frozen reading order:
+
+1. [`docs/spec/00-overview/framework-overview.md`](docs/spec/00-overview/framework-overview.md)
+2. [`docs/spec/00-overview/mvp-scope.md`](docs/spec/00-overview/mvp-scope.md)
+3. [`docs/spec/20-contracts/canonical-contracts.md`](docs/spec/20-contracts/canonical-contracts.md)
+4. [`docs/spec/30-core-loop/core-loop-state-machine.md`](docs/spec/30-core-loop/core-loop-state-machine.md)
+5. The relevant leaf spec under [`docs/spec/40-modules/`](docs/spec/40-modules/)
+6. ADRs under [`docs/spec/60-adr/`](docs/spec/60-adr/) when rationale is needed
+
+The vision document at [`docs/Argentum_Modular_Agentic_Framework.md`](docs/Argentum_Modular_Agentic_Framework.md) is non-normative. If it conflicts with the spec tree, the spec tree wins.
 
 ## Development Workflow
 
-Argentum follows a **contracts-first, slice-by-slice** implementation discipline:
+Argentum uses a contract-first, slice-by-slice workflow:
 
-1. Each slice starts from a leaf spec and defines owned contracts, acceptance criteria, and explicit out-of-scope items.
-2. Implementation is bounded to one owning module or package boundary.
-3. Every slice must pass its validation gate (build + focused tests) before the next slice begins.
-4. Slices 0001–0011 are validated and non-vacuous; the pipeline continues contract-by-contract toward a complete core loop.
+1. Plan against the authoritative spec and keep the slice bounded to one owning package or boundary.
+2. Implement from contracts outward, not from incidental wiring inward.
+3. Validate with focused package tests before widening scope.
+4. Record cursor state, approved next slices, and audits under [`docs/implementation/`](docs/implementation/).
+
+If you want the live implementation queue rather than a summary, see [`docs/implementation/backlog.md`](docs/implementation/backlog.md).
 
 ## MVP Scope
 
-Argentum MVP targets one complete end-to-end path:
+Included in MVP:
 
-- **One** terminal CLI channel
-- **One** gateway with local SQLite-backed session persistence
-- **One** deterministic single-agent turn loop
-- **One** hybrid LLM adapter (DeepSeek)
-- **One** provider-neutral tool registry with native host execution
-- Inline context compaction, immutable bedrock, sequential tool execution, flat structured telemetry
+- One terminal CLI channel module
+- One gateway implementation with local session persistence
+- One deterministic single-agent turn loop
+- One hybrid DeepSeek adapter behind a provider-neutral boundary
+- One provider-neutral tool registry with native host execution
+- Inline compaction, immutable bedrock, sequential tool execution, and flat structured telemetry
 
-Post-MVP: multi-agent orchestration, distributed execution, parallel tools, multiple channel/provider implementations, and bedrock mutation workflows are explicitly deferred.
+Explicitly deferred until after MVP:
+
+- Multi-agent orchestration
+- Distributed workers or remote execution pools
+- Parallel tool execution
+- Multiple channel implementations
+- Multiple provider implementations
+- Bedrock mutation during normal runtime
 
 ## License
 
-_Not yet assigned._
+Not yet assigned.

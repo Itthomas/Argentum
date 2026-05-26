@@ -46,3 +46,15 @@ function toLoadRuntimeStartupConfigOptions(
 }
 
 async function noopInitializeDownstream(): Promise<void> {}
+
+// ── Composition-root re-exports ─────────────────────────────────
+
+export {
+	startRuntime,
+	type RuntimeCliTurnOptions,
+	type RuntimeCliTurnResult,
+	type RuntimeLlmProviderFactoryInput,
+	type RuntimeContext,
+	type StartRuntimeOptions,
+} from "./composition-root.js";
+export { MockLLMProvider } from "./mock-llm-provider.js";

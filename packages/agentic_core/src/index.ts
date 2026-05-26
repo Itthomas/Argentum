@@ -8,6 +8,7 @@ export {
   isValidTransition,
 } from "./turn-state-machine.js";
 export type {
+  TurnEventMetadata,
   TransitionMetadata,
   TurnEventEmitter,
 } from "./turn-state-machine.js";
@@ -34,8 +35,10 @@ export type {
 export { PromptCompiler, PromptCompilerError } from "./prompt-compiler.js";
 export type {
   InferencePolicy,
+  PromptCompilerDependencies,
   PromptCompilerErrorCode,
   PromptCompilerInput,
+  PromptCompilerToolExposurePolicy,
 } from "./prompt-compiler.js";
 
 export { evaluateGovernor } from "./turn-governor.js";
@@ -43,3 +46,13 @@ export type {
   GovernorAbortReason,
   GovernorDecision,
 } from "./turn-governor.js";
+
+export { validateAndRepair } from "./validation-repair.js";
+export type { ValidationOutcome } from "./validation-repair.js";
+
+export { CoreLoopOrchestrator } from "./core-loop-orchestrator.js";
+export type {
+  CoreLoopOrchestratorDependencies,
+  TurnContentStore,
+  ToolCallExecutor,
+} from "./core-loop-orchestrator.js";

@@ -13,6 +13,16 @@ export type {
 	GrantDenialCode,
 	GrantResolution,
 } from "./grant-resolver.js";
+export {
+	SecretHandleResolutionError,
+	StaticSecretHandleResolver,
+} from "./secret-handle-resolver.js";
+export type {
+	SecretHandleResolutionFailure,
+	SecretHandleResolutionResult,
+	SecretHandleResolutionSuccess,
+	SecretHandleResolver,
+} from "./secret-handle-resolver.js";
 export { NativeExecutionDriver, NOOP_DRIVER_STUB } from "./execution-driver.js";
 export type { ExecutionDriver } from "./execution-driver.js";
 export {
@@ -21,3 +31,9 @@ export {
   CALL_ID_PATTERN,
   storeToolArtifact,
 } from "./artifact-store.js";
+export { bedrockImmutabilityGuard } from "./bedrock-immutability-guard.js";
+export type {
+	WorkspacePathAuthorizationResult,
+	WorkspacePathDenialCode,
+	WorkspacePathRequest,
+} from "./workspace-path-guard.js";

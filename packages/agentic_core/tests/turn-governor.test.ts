@@ -143,16 +143,13 @@ describe("evaluateGovernor — repair_limit_exceeded", () => {
     vi.useRealTimers();
   });
 
-  it("repair_attempts_used equals max → abort (repair_limit_exceeded)", () => {
+  it("repair_attempts_used equals max → continue", () => {
     const envelope = deepMergeBudget(makeEnvelope({ step_count: 0 }), {
       max_repair_attempts: 3,
       repair_attempts_used: 3,
     });
     const decision = evaluateGovernor(envelope, STARTED_AT);
-    expect(decision).toEqual({
-      action: "abort",
-      reason: "repair_limit_exceeded",
-    });
+    expect(decision).toEqual({ action: "continue" });
   });
 
   it("repair_attempts_used exceeds max → abort (repair_limit_exceeded)", () => {
@@ -227,14 +224,14 @@ describe("evaluateGovernor — priority ordering", () => {
     });
   });
 
-  it("repair and wall clock both exhausted → repair wins (checked second)", () => {
+  it("repair exceeds max and wall clock both exhausted → repair wins (checked second)", () => {
     vi.useFakeTimers();
     vi.setSystemTime(STARTED_AT + 600_001);
     const envelope = deepMergeBudget(makeEnvelope({ step_count: 0 }), {
       max_inference_steps: 12,
       max_repair_attempts: 3,
       max_wall_clock_ms: 600_000,
-      repair_attempts_used: 3,
+      repair_attempts_used: 4,
     });
     const decision = evaluateGovernor(envelope, STARTED_AT);
     expect(decision).toEqual({
@@ -283,14 +280,14 @@ describe("evaluateGovernor — budget-driven (no hardcoded defaults)", () => {
     });
   });
 
-  it("respects non-MVP max_repair_attempts (1 instead of 3)", () => {
+  it("respects non-MVP max_repair_attempts (1 instead of 3) once exceeded", () => {
     vi.useFakeTimers();
     vi.setSystemTime(STARTED_AT + 1000);
     const envelope = deepMergeBudget(makeEnvelope({ step_count: 0 }), {
       max_inference_steps: 12,
       max_repair_attempts: 1,
       max_wall_clock_ms: 600_000,
-      repair_attempts_used: 1,
+      repair_attempts_used: 2,
     });
     const decision = evaluateGovernor(envelope, STARTED_AT);
     vi.useRealTimers();

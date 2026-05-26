@@ -2,12 +2,13 @@
 
 ## Status
 
-- State: planned
+- State: validated
 - Approval: approved
 - Approved by: human (CRITICAL C1/C2 resolved 2026-05-24)
 - Approval date: 2026-05-24
 - Phase: 4 (Agentic Core)
 - Owner: agentic_core
+- Implemented: 2026-05-24
 - Execution readiness: ready-when-approved. This slice depends on `@argentum/contracts` for `ActionDecision`, `DecisionKind`, `TurnEnvelope`, `TurnBudget`, `ContextItem`, `ContentRef`, and `parseActionDecision` (slices 0007, 0012, 0013 — all validated). It also depends on `EpisodicMemory` from `@argentum/agentic-core` (slice 0025, implemented) for appending repair feedback. The `@argentum/agentic-core` package already has `@argentum/contracts` as a workspace dependency (added by slice 0024). The `EpisodicMemory` class is already implemented and exported.
 
 ## Scope
@@ -69,7 +70,7 @@
   - `TurnEnvelope` — the current turn envelope with budget counters, from `@argentum/contracts` (slice 0007)
   - `EpisodicMemory` — the session-scoped memory store for appending repair feedback, from `@argentum/agentic-core` (slice 0025, implemented)
 - Outputs crossing the boundary:
-  - `ValidationOutcome` discriminated union — `valid`, `repair`, or `abort`
+  - `ValidationOutcome` discriminated union — `valid`, `repair`, or `abort`; the `repair` variant carries both the repair `ContextItem` and its `feedbackText` so the core loop can persist the backing text through its content-store seam before re-inference
   - `validateAndRepair` function — synchronous, exported from `@argentum/agentic-core`
 
 ## Plan
@@ -99,7 +100,7 @@
        2. If it returns successfully: return `{ outcome: "valid", decision }`
        3. If it throws `ActionDecisionValidationError`: catch the error, extract `issues` for repair feedback
        4. Check `envelope.budget.repair_attempts_used < envelope.budget.max_repair_attempts`
-          - If repairs remain: build repair feedback via `buildRepairFeedback()`, call `memory.add(feedback)`, increment repair attempts, return `{ outcome: "repair", feedback, updatedEnvelope }`
+          - If repairs remain: build repair feedback via `buildRepairFeedback()`, call `memory.add(feedback.contextItem)`, increment repair attempts, return `{ outcome: "repair", feedback: feedback.contextItem, feedbackText: feedback.feedbackText, updatedEnvelope }`
           - If repairs exhausted: return `{ outcome: "abort", reason: "repair_attempts_exhausted", updatedEnvelope }` — note: `repair_attempts_used` is NOT incremented on abort (per spec, the counter increments only on committed repair attempts, not terminal failures). The returned envelope is a shallow copy of the input envelope.
   2. Update `packages/agentic_core/src/index.ts` to export all public symbols from `validation-repair.ts`
 - Required tests:
@@ -161,7 +162,28 @@
 - Adversarial review findings (by severity: CRITICAL, HIGH, MEDIUM, LOW):
   - **C1 (CRITICAL) — `"repair_feedback"` is not a valid `ContextLayer`** (RESOLVED 2026-05-24): Per human decision, repair feedback will use the existing canonical `"system"` layer rather than introducing a new layer literal. The `ContextLayer` union (`"bedrock" | "environment" | "episodic" | "tool_summary" | "system"`) remains unchanged. No contract amendment needed.
   - **C2 (CRITICAL) — `validateConditionalFields` is redundant with `parseActionDecision`** (RESOLVED 2026-05-24): Per human decision, the module will delegate ALL validation to `parseActionDecision()` from `@argentum/contracts`. The custom `validateConditionalFields` helper is dropped. `parseActionDecision` is the single source of truth — it already validates all kind-specific field rules (`message` for `respond`/`clarify`, `tool_calls` for `tool_calls`, `abort` per spec).
+  - **L1 (LOW) — Type assertions on literal types** (NOTED 2026-05-24): The `buildRepairFeedback` helper uses explicit type assertions (`as ContentRefKind`, `as ContentRefStorageArea`, `as ContentRefRetention`, `as ContextLayer`) for string literals. These are correct but could be avoided by using `as const` on the object literals. No behavior impact.
+  - **L2 (LOW) — Duplicate envelope spread in abort paths** (NOTED 2026-05-24): The `unexpected_validation_error` and `repair_attempts_exhausted` abort paths both spread the envelope identically (`{ ...envelope }`). A shared helper could DRY this, but correctness is unaffected.
+  - **No CRITICAL, HIGH, or MEDIUM findings.**
 - Refinements applied:
   - C1: All references to `layer: "repair_feedback"` changed to `layer: "system"` in acceptance criteria, plan, and tests.
   - C2: Removed `validateConditionalFields` helper from plan. Simplified `validateAndRepair` to single-step `parseActionDecision()` delegation. Removed 5 conditional-failure tests (now covered by `parseActionDecision` contract tests).
   - Card status updated to `approved` (2026-05-24).
+  - Implementation completed (2026-05-24): Created `validation-repair.ts`, updated `index.ts` exports, and created `validation-repair.test.ts`. The repair outcome now carries `feedbackText` so slice 0034 can persist repair feedback behind the returned `ContentRef` before re-inference. All focused and package validations pass. No contract amendments needed.
+
+## Implementation Summary
+
+### Files changed
+- **Created**: `packages/agentic_core/src/validation-repair.ts` — `ValidationOutcome` type, `validateAndRepair` function, private helpers `buildRepairFeedback` and `incrementRepairAttempts`
+- **Updated**: `packages/agentic_core/src/index.ts` — added exports for `validateAndRepair` and `ValidationOutcome`
+- **Created**: `packages/agentic_core/tests/validation-repair.test.ts` — 33 tests covering valid paths, schema failures, repair feedback storage and returned backing text, repair attempt counters, repair exhaustion, immutability, edge cases, and export verification
+
+### What validated
+- `pnpm --filter @argentum/agentic-core test`: 312 tests passed (33 validation-repair tests included), 0 failures
+- `pnpm typecheck`: full project typecheck passes cleanly
+- `pnpm --filter @argentum/agentic-core build`: compiles without errors
+
+### Remaining risks
+- The `ContentRef.locator` uses the pattern `"repair:<decision_id>"`. This is a valid relative locator per `isRelativeLocator()` rules (no leading slash, no drive letter, no URI scheme with `://`). However, if `decision_id` values ever contain characters that make the locator invalid (e.g., a `://` substring), the `ContentRef` would fail validation inside `EpisodicMemory.add()`. This is unlikely with UUID-format `decision_id` values but worth noting.
+- The `Buffer` import from `node:buffer` ties this module to Node.js runtime. This is consistent with the project's `"types": ["node"]` configuration and the MVP's server-side deployment model. If the package ever targets browser environments, `Buffer.byteLength` would need a substitute (e.g., `TextEncoder`).
+- The repair feedback text is now surfaced on the `ValidationOutcome` repair variant rather than duplicated inside the `ContextItem` shape. That keeps slice 0030 contract-first while letting slice 0034 persist the backing text through its `TurnContentStore` seam before re-inference.

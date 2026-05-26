@@ -55,23 +55,26 @@ describe("ALLOWED_TRANSITIONS", () => {
     expect(keys).toEqual([...ALL_STATES].sort());
   });
 
-  it("encodes exactly 12 directed transition edges", () => {
+  it("encodes exactly 15 directed transition edges", () => {
     let edgeCount = 0;
     for (const targets of ALLOWED_TRANSITIONS.values()) {
       edgeCount += targets.size;
     }
-    expect(edgeCount).toBe(12);
+    expect(edgeCount).toBe(15);
   });
 
   const expectedEdges: Array<[TurnState, TurnState]> = [
     ["accepted", "building_context"],
     ["building_context", "inferring"],
+    ["building_context", "aborted"],
     ["inferring", "validating"],
+    ["inferring", "aborted"],
     ["validating", "building_context"],
     ["validating", "executing_tools"],
     ["validating", "responding"],
     ["validating", "aborted"],
     ["executing_tools", "compacting"],
+    ["executing_tools", "aborted"],
     ["compacting", "building_context"],
     ["responding", "finalizing"],
     ["finalizing", "completed"],
@@ -111,16 +114,19 @@ describe("STEP_INCREMENT_TRANSITIONS", () => {
 // ── isValidTransition ────────────────────────────────────────────
 
 describe("isValidTransition", () => {
-  it("returns true for all 12 allowed transitions", () => {
+  it("returns true for all 13 allowed transitions", () => {
     const allowed: Array<[TurnState, TurnState]> = [
       ["accepted", "building_context"],
       ["building_context", "inferring"],
+      ["building_context", "aborted"],
       ["inferring", "validating"],
+      ["inferring", "aborted"],
       ["validating", "building_context"],
       ["validating", "executing_tools"],
       ["validating", "responding"],
       ["validating", "aborted"],
       ["executing_tools", "compacting"],
+      ["executing_tools", "aborted"],
       ["compacting", "building_context"],
       ["responding", "finalizing"],
       ["finalizing", "completed"],
@@ -142,7 +148,9 @@ describe("isValidTransition", () => {
       ["accepted", "completed"],
       ["accepted", "inferring"],
       ["building_context", "executing_tools"],
+      ["building_context", "completed"],
       ["inferring", "responding"],
+      ["inferring", "completed"],
       ["executing_tools", "completed"],
       ["compacting", "completed"],
       ["responding", "building_context"],
@@ -151,6 +159,52 @@ describe("isValidTransition", () => {
     for (const [from, to] of invalid) {
       expect(isValidTransition(from, to)).toBe(false);
     }
+  });
+});
+
+// ── New transitions: building_context / inferring → aborted ─────
+//
+// Added per human decision 2026-05-24 (Option A) to support:
+//   - Governor pre-inference abort (step limit, repair limit, wall clock)
+//   - Provider failure abort (LLMProviderError during inference)
+
+describe("new abort transitions (building_context / inferring)", () => {
+  it("building_context -> aborted is a valid transition", () => {
+    expect(isValidTransition("building_context", "aborted")).toBe(true);
+  });
+
+  it("building_context -> completed is still invalid (aborted is the only new target)", () => {
+    expect(isValidTransition("building_context", "completed")).toBe(false);
+  });
+
+  it("inferring -> aborted is a valid transition", () => {
+    expect(isValidTransition("inferring", "aborted")).toBe(true);
+  });
+
+  it("inferring -> completed is still invalid", () => {
+    expect(isValidTransition("inferring", "completed")).toBe(false);
+  });
+
+  it("executeTransition: building_context -> aborted completes without error", () => {
+    const env = makeEnvelope({ state: "building_context", step_count: 3 });
+    const result = executeTransition(env, "aborted");
+    expect(result.state).toBe("aborted");
+    expect(result.step_count).toBe(3); // system interrupt, no step increment
+  });
+
+  it("executeTransition: inferring -> aborted completes without error", () => {
+    const env = makeEnvelope({ state: "inferring", step_count: 4 });
+    const result = executeTransition(env, "aborted");
+    expect(result.state).toBe("aborted");
+    expect(result.step_count).toBe(4); // provider failure, no step increment
+  });
+
+  it("building_context -> aborted does NOT increment step_count (governor interrupt)", () => {
+    expect(STEP_INCREMENT_TRANSITIONS.has("building_context->aborted")).toBe(false);
+  });
+
+  it("inferring -> aborted does NOT increment step_count (provider failure)", () => {
+    expect(STEP_INCREMENT_TRANSITIONS.has("inferring->aborted")).toBe(false);
   });
 });
 
@@ -261,7 +315,9 @@ describe("executeTransition: step_count does NOT increment", () => {
   const nonIncrementTransitions: Array<[TurnState, TurnState]> = [
     ["accepted", "building_context"],
     ["building_context", "inferring"],
+    ["building_context", "aborted"],
     ["inferring", "validating"],
+    ["inferring", "aborted"],
     ["validating", "building_context"],
     ["validating", "executing_tools"],
     ["validating", "responding"],

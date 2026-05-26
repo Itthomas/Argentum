@@ -4,7 +4,9 @@
   "version": "0.1.0",
   "type": "module",
   "dependencies": {
-    "@argentum/contracts": "workspace:*"
+    "@argentum/contracts": "workspace:*",
+    "@argentum/llm-provider": "workspace:*",
+    "@argentum/tooling": "workspace:*"
   },
   "exports": {
     ".": {

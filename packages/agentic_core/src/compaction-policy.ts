@@ -44,6 +44,8 @@ export interface CompactionOptions {
 export interface CompactionResult {
   /** The compacted `ContextItem` for episodic memory. */
   readonly contextItem: ContextItem;
+  /** The exact text committed behind `contextItem.content_ref`. */
+  readonly committedText: string;
   /** `ContentRef` references to externalized raw artifacts (empty if nothing externalized). */
   readonly externalizedRefs: ContentRef[];
   /** The new compaction revision (only incremented when memory-affecting changes are committed). */
@@ -197,8 +199,9 @@ export class CompactionPolicy {
 
     return {
       contextItem,
+      committedText: humanSummary,
       externalizedRefs: [],
-      newRevision: currentRevision, // No increment: verbatim small result.
+      newRevision: currentRevision + 1,
       disposition: "inline",
     };
   }
@@ -236,6 +239,7 @@ export class CompactionPolicy {
 
     return {
       contextItem,
+      committedText: summary,
       externalizedRefs: [externalRef],
       newRevision: currentRevision + 1, // Increment: externalization occurred.
       disposition: "externalized",
@@ -264,6 +268,7 @@ export class CompactionPolicy {
 
     return {
       contextItem,
+      committedText: summary,
       externalizedRefs: [],
       newRevision: currentRevision + 1, // Increment: error context added (differs from raw summary).
       disposition: "error_summary",

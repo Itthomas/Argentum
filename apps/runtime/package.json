@@ -4,7 +4,14 @@
   "version": "0.1.0",
   "type": "module",
   "dependencies": {
-    "@argentum/environment": "workspace:*"
+    "@argentum/agentic-core": "workspace:*",
+    "@argentum/channel-cli": "workspace:*",
+    "@argentum/contracts": "workspace:*",
+    "@argentum/environment": "workspace:*",
+    "@argentum/gateway": "workspace:*",
+    "@argentum/llm-provider": "workspace:*",
+    "@argentum/telemetry": "workspace:*",
+    "@argentum/tooling": "workspace:*"
   },
   "scripts": {
     "build": "tsc -b",

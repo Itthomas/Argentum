@@ -4,5 +4,15 @@
     "rootDir": "src",
     "outDir": "dist"
   },
-  "include": ["src/**/*.ts"]
+  "include": ["src/**/*.ts"],
+  "references": [
+    { "path": "../../packages/contracts" },
+    { "path": "../../packages/environment" },
+    { "path": "../../packages/gateway" },
+    { "path": "../../packages/agentic_core" },
+    { "path": "../../packages/llm_provider" },
+    { "path": "../../packages/telemetry" },
+    { "path": "../../packages/tooling" },
+    { "path": "../../packages/channel_cli" }
+  ]
 }

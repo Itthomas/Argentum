@@ -110,6 +110,68 @@ describe("parseToolDefinition", () => {
     expect(parsed.defaults).toEqual({});
   });
 
+  it("deep-clones and deep-freezes nested input_schema and defaults data", () => {
+    const td = makeValidToolDefinition({
+      input_schema: {
+        type: "object",
+        properties: {
+          filter: {
+            type: "object",
+            properties: {
+              query: { type: "string" },
+            },
+            required: ["query"],
+          },
+        },
+        required: ["filter"],
+      },
+      defaults: {
+        filter: {
+          query: "alpha",
+        },
+        flags: ["one"],
+      },
+    });
+
+    const parsed = parseToolDefinition(td);
+
+    ((((td.input_schema as Record<string, unknown>).properties as Record<string, unknown>)
+      .filter as Record<string, unknown>).properties as Record<string, unknown>)
+      .query = { type: "number" };
+    (((td.defaults as Record<string, unknown>).filter as Record<string, unknown>)
+      .query) = "beta";
+    (((td.defaults as Record<string, unknown>).flags as string[])).push("two");
+
+    expect(parsed.input_schema).toEqual({
+      type: "object",
+      properties: {
+        filter: {
+          type: "object",
+          properties: {
+            query: { type: "string" },
+          },
+          required: ["query"],
+        },
+      },
+      required: ["filter"],
+    });
+    expect(parsed.defaults).toEqual({
+      filter: {
+        query: "alpha",
+      },
+      flags: ["one"],
+    });
+    expect(() => {
+      (((parsed.input_schema.properties as Record<string, unknown>).filter as Record<
+        string,
+        unknown
+      >).properties as Record<string, unknown>).query = { type: "number" };
+    }).toThrow(TypeError);
+    expect(() => {
+      (((parsed.defaults as Record<string, unknown>).flags as string[])).push("two");
+    }).toThrow(TypeError);
+  });
+
   it("accepts all four side_effect_level literals", () => {
     const levels = [
       "read_only",

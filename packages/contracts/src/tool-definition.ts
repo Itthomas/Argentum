@@ -64,6 +64,24 @@ export class ToolDefinitionValidationError extends Error {
 
 type UnknownRecord = Record<string, unknown>;
 
+function cloneAndFreezePlainData(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return Object.freeze(value.map((item) => cloneAndFreezePlainData(item)));
+  }
+
+  if (isPlainObject(value)) {
+    const clone: UnknownRecord = {};
+
+    for (const [key, entry] of Object.entries(value)) {
+      clone[key] = cloneAndFreezePlainData(entry);
+    }
+
+    return Object.freeze(clone);
+  }
+
+  return value;
+}
+
 const TOOL_DEFINITION_FIELDS = new Set([
   "name",
   "description",
@@ -348,7 +366,7 @@ function parseRequiredPlainObject(
     return undefined;
   }
 
-  return value;
+  return cloneAndFreezePlainData(value) as Record<string, unknown>;
 }
 
 function parseOptionalPlainObject(
@@ -377,7 +395,7 @@ function parseOptionalPlainObject(
     return undefined;
   }
 
-  return value;
+  return cloneAndFreezePlainData(value) as Record<string, unknown>;
 }
 
 function parseRequiredSecretHandles(

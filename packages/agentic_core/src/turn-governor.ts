@@ -23,8 +23,11 @@ export type GovernorDecision =
  * 2. repair_attempts_used vs max_repair_attempts
  * 3. elapsed wall-clock time vs max_wall_clock_ms
  *
- * All comparisons use `>=` so that a turn aborts when the count
- * meets or would exceed the budget.
+ * Step-count and wall-clock comparisons use `>=` so that a turn aborts when
+ * the observed value meets the budget. Repair attempts abort only when the
+ * counter would exceed the budget, allowing the current inference step to
+ * reach validation and emit a controlled validation-side abort when no
+ * repairs remain.
  *
  * @param envelope - The current turn envelope (includes step_count and budget).
  * @param startedAt - Epoch-ms timestamp recorded at turn start.
@@ -43,7 +46,7 @@ export function evaluateGovernor(
   }
 
   // 2. Repair limit
-  if (budget.repair_attempts_used >= budget.max_repair_attempts) {
+  if (budget.repair_attempts_used > budget.max_repair_attempts) {
     return { action: "abort", reason: "repair_limit_exceeded" };
   }
 

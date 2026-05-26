@@ -2,7 +2,11 @@ import type { DecisionKind, TurnEnvelope, TurnState } from "@argentum/contracts"
 
 // ── Transition Metadata ──────────────────────────────────────────
 
-export interface TransitionMetadata {
+export interface TurnEventMetadata {
+  readonly [key: string]: unknown;
+}
+
+export interface TransitionMetadata extends TurnEventMetadata {
   readonly decisionKind?: DecisionKind;
   readonly reason?: string;
 }
@@ -10,7 +14,7 @@ export interface TransitionMetadata {
 // ── Turn Event Emitter ───────────────────────────────────────────
 
 export interface TurnEventEmitter {
-  emit(eventName: string, envelope: TurnEnvelope, metadata?: TransitionMetadata): void;
+  emit(eventName: string, envelope: TurnEnvelope, metadata?: TurnEventMetadata): void;
 }
 
 // ── Transition Error ─────────────────────────────────────────────
@@ -31,14 +35,18 @@ export class TransitionError extends Error {
 
 // ── Allowed Transitions ──────────────────────────────────────────
 //
-// Encodes the 12 directed transition edges from the core-loop state
+// Encodes the 15 directed transition edges from the core-loop state
 // machine spec (docs/spec/30-core-loop/core-loop-state-machine.md).
 // Terminal states (completed, aborted) have empty target sets.
 
 const ALL_TRANSITIONS: ReadonlyMap<TurnState, ReadonlySet<TurnState>> = new Map([
   ["accepted", new Set<TurnState>(["building_context"])],
-  ["building_context", new Set<TurnState>(["inferring"])],
-  ["inferring", new Set<TurnState>(["validating"])],
+  // Governor may abort before inference when step limit, repair
+  // limit, or wall clock budget is exceeded.
+  ["building_context", new Set<TurnState>(["inferring", "aborted"])],
+  // Provider failure (LLMProviderError) during inference aborts
+  // the turn without transitioning to validation.
+  ["inferring", new Set<TurnState>(["validating", "aborted"])],
   [
     "validating",
     new Set<TurnState>([
@@ -48,7 +56,7 @@ const ALL_TRANSITIONS: ReadonlyMap<TurnState, ReadonlySet<TurnState>> = new Map(
       "aborted",
     ]),
   ],
-  ["executing_tools", new Set<TurnState>(["compacting"])],
+  ["executing_tools", new Set<TurnState>(["compacting", "aborted"])],
   ["compacting", new Set<TurnState>(["building_context"])],
   ["responding", new Set<TurnState>(["finalizing"])],
   ["finalizing", new Set<TurnState>(["completed", "aborted"])],

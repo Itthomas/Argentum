@@ -34,25 +34,21 @@ This backlog is the durable queue for planned and in-progress implementation sli
 - `@argentum/environment` has startup-loader, grant-resolver, execution-driver, and artifact-store tests (109 tests).
 - `@argentum/gateway` has focused gateway boundary tests plus source-entrypoint smoke coverage; `pnpm --filter @argentum/gateway test` is non-vacuous.
 - `@argentum/tooling` has registry, schema-validator, retry-policy, and package-entrypoint tests (90 tests).
-- `@argentum/agentic_core` has turn-state-machine, episodic-memory, prompt-compiler, context-selector, compaction-policy, and turn-governor tests (228 tests).
-- `@argentum/runtime` has focused bootstrap tests; `pnpm --filter @argentum/runtime test` is non-vacuous.
-- `@argentum/llm_provider` is a shell awaiting first implementation slice.
-- Repo-level `pnpm test` discovers 1,100+ tests across all packages.
+- `@argentum/agentic_core` has turn-state-machine, episodic-memory, prompt-compiler, context-selector, compaction-policy, turn-governor, validation-repair, and core-loop-orchestrator tests (312 tests).
+- `@argentum/llm_provider` is fully implemented with 59 tests (LLMProvider interface, tool schema projection, DeepSeek adapter).
+- `@argentum/channel-cli` is fully implemented with 92 tests (CLI input normalization, terminal rendering).
+- `@argentum/telemetry` is implemented with 21 tests (JSONL event persistence, 1 test skipped on Windows).
+- `@argentum/runtime` has 15 tests (runtime bootstrap plus the supported `runCliTurn()` happy-path seam, session isolation, telemetry persistence/flush, resolver-backed content rehydration, secret no-leak, blocked-grant termination, and repair-exhaustion hardening proofs).
+- Repo-level `pnpm test` discovers 1,373 tests across all 43 test files.
+- **All shell packages are now non-vacuous.**
 
 ## Next Actions
 
-1. ~~Audit 0010 remediation~~ — **completed 2026-05-24**. All HIGH (H1-H3) and MEDIUM (M1-M6) findings resolved.
-2. ~~Plan Phase 3 slices 0017–0019~~ — **completed 2026-05-24**.
-3. ~~Plan Phase 3 continuation 0020–0023~~ — **completed 2026-05-24**. Grant resolver, execution driver, artifact store, retry policy.
-4. ~~Plan Phase 4 slices 0024–0029~~ — **completed 2026-05-24**. Turn state machine, episodic memory, prompt compiler, context selection, compaction policy, turn governor.
-5. ~~Implement slices 0020–0029~~ — **completed 2026-05-24**. All 10 slices validated: environment (109 tests), tooling (90 tests), agentic_core (228 tests), contracts (647 tests). 1,121 total tests pass.
-6. ~~Plan slices 0030–0031~~ — **completed 2026-05-24**. Validation & repair (0030), LLM provider interface (0031).
-7. ~~Run repo audit (audit 0011)~~ — **completed 2026-05-24**. 6 HIGH, 6 MEDIUM findings; no spec drift in core 7 slices; no boundary violations; no deferred-decision leakage.
-8. **Resolve audit 0011 HIGH findings** — turn governor behavior deviations (H1-H3), stale slice cards (H4 — resolved via Status updates 2026-05-24), CompactionPolicy signature deviation (H5 — documented in card).
-9. ~~Resolve slice 0030 CRITICAL findings~~ — **resolved 2026-05-24 by human decision**. C1: use existing `"system"` layer for repair feedback. C2: drop custom validation, delegate entirely to `parseActionDecision()`. Slice card updated.
-10. **Plan Phase 5 slices 0032+** — DeepSeek adapter MVP, provider-native normalization, tool schema projection, raw trace capture. Target package: `llm_provider`.
-11. **Plan remaining Phase 4 slices** — core loop orchestrator (wires state machine + episodic memory + compaction + governor). Target package: `agentic_core`.
-12. **Refill pipeline** to 6-7 planned/approved slices ahead of cursor after CRITICAL resolutions.
+1. **Remediate audit 0022 planning-artifact drift** — **partially completed 2026-05-26**. Slice 0049 now reflects the completed logging audit, slices 0046–0048 now align with their validated state, and backlog approval/state drift for the tail of the pipeline has been corrected.
+2. **Clarify the slice 0050 DI persistence seam** — **blocked pending human decision**. The latest adversarial review found a CRITICAL ambiguity in the DI-plan term `persistence`: slice 0050 cannot be approved until a human decides whether this audit should treat persistence as gateway session persistence, core-loop content persistence, episodic memory, or multiple separate seams.
+3. **After persistence-scope clarification, re-review and execute slice 0050** — the DI compliance audit is otherwise tightened and review-ready aside from the blocking persistence-scope question.
+4. **Execute slice 0051 after 0050 is resolved** — create `docs/operator-guide.md` and validate it against runtime config, workspace layout, queueing rules, feature flags, secret-handle setup, governor defaults, and telemetry output paths.
+5. **Refill the forward implementation buffer with concrete hardening slices** — plan follow-up remediation slices for audit 0021 MEDIUM gaps: direct-ingress telemetry (`ingress.accepted`) and end-to-end coverage for the remaining `MvpStreamEventKind` variants.
 
 ## Slice Queue
 
@@ -85,24 +81,53 @@ This backlog is the durable queue for planned and in-progress implementation sli
 - Validated current slice: [docs/implementation/slices/0027-agentic-core-context-selection-policy.md](./slices/0027-agentic-core-context-selection-policy.md)
 - Validated current slice: [docs/implementation/slices/0028-agentic-core-compaction-policy.md](./slices/0028-agentic-core-compaction-policy.md)
 - Validated current slice: [docs/implementation/slices/0029-agentic-core-turn-governor.md](./slices/0029-agentic-core-turn-governor.md)
-- Planned slice (approved, CRITICAL C1/C2 resolved 2026-05-24): [docs/implementation/slices/0030-agentic-core-validation-repair-policy.md](./slices/0030-agentic-core-validation-repair-policy.md)
-- Planned slice: [docs/implementation/slices/0031-llm-provider-abstraction-interface.md](./slices/0031-llm-provider-abstraction-interface.md)
+- Validated current slice: [docs/implementation/slices/0030-agentic-core-validation-repair-policy.md](./slices/0030-agentic-core-validation-repair-policy.md)
+- Validated current slice: [docs/implementation/slices/0031-llm-provider-abstraction-interface.md](./slices/0031-llm-provider-abstraction-interface.md)
+- Validated current slice: [docs/implementation/slices/0032-llm-provider-tool-schema-projection.md](./slices/0032-llm-provider-tool-schema-projection.md)
+- Validated current slice: [docs/implementation/slices/0033-llm-provider-deepseek-adapter.md](./slices/0033-llm-provider-deepseek-adapter.md)
+- Validated current slice: [docs/implementation/slices/0034-agentic-core-core-loop-orchestrator.md](./slices/0034-agentic-core-core-loop-orchestrator.md)
+- Validated current slice: [docs/implementation/slices/0035-channel-cli-input-normalization.md](./slices/0035-channel-cli-input-normalization.md)
+- Validated current slice: [docs/implementation/slices/0036-channel-cli-terminal-rendering.md](./slices/0036-channel-cli-terminal-rendering.md)
+- Validated current slice: [docs/implementation/slices/0037-runtime-composition-root-e2e-happy-path.md](./slices/0037-runtime-composition-root-e2e-happy-path.md)
+- Validated current slice: [docs/implementation/slices/0038-telemetry-event-persistence.md](./slices/0038-telemetry-event-persistence.md)
+- Validated current slice: [docs/implementation/slices/0039-environment-workspace-path-guard.md](./slices/0039-environment-workspace-path-guard.md)
+- Validated current slice: [docs/implementation/slices/0040-tooling-tool-discovery-planner.md](./slices/0040-tooling-tool-discovery-planner.md)
+- Validated current slice: [docs/implementation/slices/0041-runtime-tool-call-e2e-happy-path.md](./slices/0041-runtime-tool-call-e2e-happy-path.md)
+- Validated current slice: [docs/implementation/slices/0042-environment-secret-handle-resolver-interface.md](./slices/0042-environment-secret-handle-resolver-interface.md)
+- Validated current slice: [docs/implementation/slices/0043-runtime-secret-tool-no-leak-e2e.md](./slices/0043-runtime-secret-tool-no-leak-e2e.md)
+- Validated current slice: [docs/implementation/slices/0044-runtime-blocked-grant-tool-path.md](./slices/0044-runtime-blocked-grant-tool-path.md)
+- Validated current slice: [docs/implementation/slices/0045-runtime-repair-exhaustion-e2e.md](./slices/0045-runtime-repair-exhaustion-e2e.md)
+- Validated current slice: [docs/implementation/slices/0046-environment-bedrock-immutability.md](./slices/0046-environment-bedrock-immutability.md)
+- Validated current slice: [docs/implementation/slices/0047-gateway-telemetry-event-ordering.md](./slices/0047-gateway-telemetry-event-ordering.md)
+- Validated current slice: [docs/implementation/slices/0048-tooling-canonical-schema-model-validation.md](./slices/0048-tooling-canonical-schema-model-validation.md)
+- Validated current slice: [docs/implementation/slices/0049-logging-plan-compliance-audit.md](./slices/0049-logging-plan-compliance-audit.md)
+- Validated current slice: [docs/implementation/slices/0050-dependency-injection-plan-compliance-audit.md](./slices/0050-dependency-injection-plan-compliance-audit.md)
+- Validated current slice: [docs/implementation/slices/0051-operator-documentation.md](./slices/0051-operator-documentation.md)
 
-**Phase 3 complete (0017–0023). Phase 4 implemented (0024–0029). Phase 4 planned (0030 — approved, CRITICAL findings resolved). Phase 5 started (0031 planned).**
+**Phase 3 complete (0017–0023). Phase 4 implemented and validated through slice 0034. Phase 5 implemented and validated through slice 0033. Phase 6/7 are validated through slice 0051. No further slices are planned.**
 
-## Pipeline State (2026-05-24)
+## Pipeline State (2026-05-26)
 
-- Implementation cursor: slice 0029 (last validated)
-- Planned slices ahead: 2 (0030, 0031 — both approved and ready for implementation)
-  - **0030** (Validation & Repair): Approved. CRITICAL findings C1/C2 resolved 2026-05-24 by human decision.
-  - **0031** (LLM Provider Interface): Approved, ready for implementation
-- **10 slices implemented this session (0020–0029)**: Phase 3 complete, Phase 4 agentic core implemented
-- **Contract amendment**: `max_tokens_per_step?: number` added to `TurnBudget` (backward-compatible, optional)
-- **Latest audit**: 0012 (**ready** — 0 HIGH, 0 MEDIUM, 0 LOW. All findings resolved.)
-- **Test gates**: contracts (647), environment (109), gateway (~30), tooling (90), agentic_core (228), runtime (7) — 1,121 total
-- **Shell packages remaining**: `llm_provider`, `channel_cli`, `telemetry`
+- Implementation cursor: slice 0051 (last validated)
+- **All planned and approved slices have been implemented and validated.** The pipeline is at end.
+- Planned slices ahead of cursor: 0.
+- **Buffer**: 0 slices. Follow-up hardening slices for audit 0021 MEDIUM findings are identified in `post-mvp-hardening-ideas.md` but not yet planned as formal slice cards.
+- **Latest audit**: [docs/implementation/audits/0023-dependency-injection-plan-compliance.md](./audits/0023-dependency-injection-plan-compliance.md) returned `ready` for DI-plan compliance. One MEDIUM finding (agentic_core → tooling sideways edge via `planToolExposure`). 
+- **Next pending slices**: None. The pipeline is drained.
+- **Focused test gates after remediation**: contracts (647), environment (109), gateway (~30), tooling (90), agentic_core (312), llm_provider (59), channel_cli (92), telemetry (21, 1 skipped on Windows), runtime (15)
+- **Shell packages remaining**: none. All workspace packages now have non-vacuous test gates.
 
 ## Audit Findings
+
+### Audit 0023 (2026-05-26) — DI Plan Compliance
+
+Audit report: [docs/implementation/audits/0023-dependency-injection-plan-compliance.md](./audits/0023-dependency-injection-plan-compliance.md)
+
+Repo readiness verdict: **ready** — 0 HIGH, 1 MEDIUM (agentic_core → tooling sideways edge). All five core-loop DI seams verified as interface-typed. Provider swappability confirmed. Execution-driver seam confirmed as environment-owned but vacuous until concrete tools land.
+
+### Audit 0022 (2026-05-26) — Resolved
+
+All CRITICAL and planning-artifact findings from audit 0022 have been resolved. Slice 0050 persistence-seam ambiguity resolved by human decision (2026-05-26). Slice 0051 approved and validated.
 
 ### Audit 0012 (2026-05-24) — Post-Remediation
 

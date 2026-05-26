@@ -56,12 +56,12 @@ describe("CompactionPolicy — inline disposition", () => {
     expect(compacted.externalizedRefs).toEqual([]);
   });
 
-  it("small result: newRevision unchanged (verbatim)", async () => {
+  it("small result: newRevision increments when committed memory changes", async () => {
     const policy = new CompactionPolicy();
     const result = makeResult({ human_summary: "Short result" });
     const compacted = await policy.compact(result, 5);
 
-    expect(compacted.newRevision).toBe(5);
+    expect(compacted.newRevision).toBe(6);
   });
 
   it("small result: contextItem has correct shape", async () => {

@@ -23,15 +23,18 @@ This document defines the deterministic state machine for one Argentum turn.
 
 1. `accepted` -> `building_context`
 2. `building_context` -> `inferring`
-3. `inferring` -> `validating`
-4. `validating` -> `building_context` when repair context must be added
-5. `validating` -> `executing_tools` when `ActionDecision.kind = tool_calls`
-6. `validating` -> `responding` when `ActionDecision.kind = respond` or `clarify`
-7. `validating` -> `aborted` when `ActionDecision.kind = abort` or validation cannot recover
-8. `executing_tools` -> `compacting`
-9. `compacting` -> `building_context` after every MVP `tool_calls` decision
-10. `responding` -> `finalizing`
-11. `finalizing` -> `completed` or `aborted`
+3. `building_context` -> `aborted` when governor triggers pre-inference abort (step limit, repair limit, or wall clock exceeded)
+4. `inferring` -> `validating`
+5. `inferring` -> `aborted` when the LLM provider fails (network error, auth failure, irrecoverable malformed response)
+6. `validating` -> `building_context` when repair context must be added
+7. `validating` -> `executing_tools` when `ActionDecision.kind = tool_calls`
+8. `validating` -> `responding` when `ActionDecision.kind = respond` or `clarify`
+9. `validating` -> `aborted` when `ActionDecision.kind = abort` or validation cannot recover
+10. `executing_tools` -> `compacting`
+11. `executing_tools` -> `aborted` when tool execution or compaction throws an unrecoverable error
+12. `compacting` -> `building_context` after every MVP `tool_calls` decision
+13. `responding` -> `finalizing`
+14. `finalizing` -> `completed` or `aborted`
 
 ## Step Semantics
 
